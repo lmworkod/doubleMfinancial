@@ -94,7 +94,7 @@ The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL
 
 The Stooq fallback is deliberately restricted to SPY, QQQ and IWM and returns daily bars, not live quotes. It does not guess exchange suffixes for European instruments. Stooq access/quota and redistribution terms can change; validate the provider's terms and current API access before relying on it. Frankfurter provides daily FX reference rates without an API key and is used only when the ECB fetch fails. FX rates are reference rates, not execution rates.
 
-Yahoo Finance/yfinance is not enabled as a production fallback: yfinance warns that it relies on publicly available endpoints and is intended for personal use; confirm permission before incorporating it into a deployed application. Official LBMA gold benchmark data may require a licence for valuation use. For the iShares Physical Gold ETC, the preferred value remains the actual exchange-listed ETC quote rather than a synthetic XAU conversion.
+Yahoo Finance chart is used only as a best-effort daily fallback for explicitly mapped ETF listings and XAU/EUR. It is an undocumented endpoint, can be throttled or changed without notice, and its commercial/redistribution permissions are unclear; do not treat it as a licensed feed or as real-time data. The fallback validates the returned currency and uses the observation timestamp. For the iShares Physical Gold ETC, the preferred value remains the actual exchange-listed PPFB quote; XAU/EUR is a separate spot reference and is never substituted for the ETC price.
 
 ## Data and model limits
 
