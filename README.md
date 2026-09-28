@@ -7,6 +7,7 @@ Telegram-first, self-hosted portfolio and market-risk assistant. Python, Postgre
 - Telegram commands for a manually maintained portfolio, quotes, macro data, refresh and status.
 - PostgreSQL persistence for holdings, current quotes and macro metrics.
 - Optional connectors: FRED, Twelve Data and Finnhub. Missing keys or exhausted quota are reported as unavailable.
+- ISIN-to-listed-symbol mapping for selected UCITS ETFs. Provider coverage is checked at runtime; unknown ISINs are not sent as exchange tickers.
 - Daily risk-feature foundation. Probabilities remain disabled until a model is trained and validated walk-forward.
 - Native Ubuntu deployment with systemd, SSH-based updates, journald logs and PostgreSQL backups.
 - Docker Compose remains available only as an optional legacy/local deployment; it is not used by the SSH installation.
@@ -83,6 +84,14 @@ pytest -q
 `/start`, `/help`, `/portfolio`, `/add SYMBOL QUANTITY [AVERAGE_COST]`, `/remove SYMBOL`, `/analyze SYMBOL`, `/watchlist`, `/opportunities`, `/risk`, `/macro`, `/refresh`, `/status`.
 
 Positions are entered manually; there is no broker connection. Valuation includes only positions with a stored quote and excludes cash, FX conversion and fees.
+
+## Instrument mapping
+
+The database keeps the ISIN as the holding identifier; the market-data layer resolves supported ISINs to provider tickers. The mapping lives in `app/instruments.py`. Provider results are not guaranteed by the presence of a mapping: data coverage, symbol syntax and entitlements depend on each provider. Instruments without a verified mapping remain unavailable instead of being queried under an invalid ticker.
+
+The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1), Global X Copper Miners (IE0003Z9E2Y3), Global X Silver Miners (IE000UL6CLP7), VanEck Space Innovators (IE000YU9K6K2) and WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6). Two additional ISINs from the portfolio are deliberately left unmapped until their exact listing is confirmed.
+
+The current portfolio valuation does not perform currency conversion. Do not compare or aggregate values in different quote currencies as though they were all EUR.
 
 ## Data and model limits
 
