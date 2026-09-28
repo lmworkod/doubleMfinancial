@@ -191,7 +191,11 @@ class MarketData:
             return ProviderResult(None, "yahoo_chart", None, error)
         try:
             result = payload["chart"]["result"][0]
-            currency = str(result["meta"].get("currency", "")).upper()
+            meta = result["meta"]
+            returned_symbol = str(meta.get("symbol", "")).upper()
+            if returned_symbol and returned_symbol != ticker.upper():
+                return ProviderResult(None, "yahoo_chart", None, "symbol_mismatch")
+            currency = str(meta.get("currency", "")).upper()
             expected = INSTRUMENTS[key].quote_currency if key in INSTRUMENTS else "EUR"
             if currency != expected:
                 return ProviderResult(None, "yahoo_chart", None, "currency_mismatch")
