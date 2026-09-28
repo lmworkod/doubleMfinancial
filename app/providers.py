@@ -83,13 +83,13 @@ class MarketData:
                 response = await self.client.get(url, params=params)
                 if response.status_code == 429 or response.status_code >= 500:
                     reason = _safe_http_error(response)
+                    if response.status_code == 429:
+                        # Quota limits are generally account-wide. Don't waste
+                        # further credits retrying the same provider here.
+                        logger.warning("%s request throttled", provider)
+                        return None, reason
                     if attempt < 2:
-                        retry_after = response.headers.get("Retry-After")
-                        try:
-                            delay = min(max(float(retry_after), 0.0), 8.0) if retry_after else 2 ** attempt
-                        except ValueError:
-                            delay = 2 ** attempt
-                        await asyncio.sleep(delay)
+                        await asyncio.sleep(2 ** attempt)
                         continue
                     logger.warning("%s request failed: %s", provider, reason)
                     return None, reason
