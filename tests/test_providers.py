@@ -2,7 +2,6 @@
 import asyncio
 
 import httpx
-import pytest
 
 from app.providers import DailyBudget, MarketData, _positive_price
 
