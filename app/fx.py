@@ -11,9 +11,9 @@ def quote_currency(symbol: str, fallback: str = "USD") -> str:
     instrument = INSTRUMENTS.get(key)
     if instrument:
         return instrument.quote_currency
-    if key.endswith("/EUR") or key.endswith("-EUR"):
+    if key.endswith(("/EUR", "-EUR")):
         return "EUR"
-    if key.endswith("/USD") or key.endswith("-USD"):
+    if key.endswith(("/USD", "-USD")):
         return "USD"
     return fallback.upper()
 
