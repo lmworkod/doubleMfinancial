@@ -160,3 +160,96 @@ def test_quote_does_not_leak_request_url_on_http_error(monkeypatch):
     assert "404" not in (result.error or "")
     assert "secret-value" not in (result.error or "")
     assert "twelvedata.com" not in (result.error or "")
+
+
+def test_yahoo_daily_fallback_for_european_etf_checks_currency(monkeypatch):
+    from app import providers
+
+    monkeypatch.setattr(providers.settings, "twelve_data_api_key", "")
+    monkeypatch.setattr(providers.settings, "finnhub_api_key", "")
+    service = MarketData()
+    calls = []
+
+    async def get(url, params):
+        calls.append(url)
+        return httpx.Response(
+            200,
+            json={"chart": {"result": [{
+                "meta": {"currency": "EUR"},
+                "timestamp": [1790352000],
+                "indicators": {"quote": [{"close": [72.88]}],
+            }]}},
+            request=httpx.Request("GET", url),
+        )
+
+    service.client.get = get
+
+    async def run():
+        try:
+            return await service.quote("IE00B4ND3602")
+        finally:
+            await service.close()
+
+    result = asyncio.run(run())
+    assert result.value == 72.88
+    assert result.source == "yahoo_daily"
+    assert "PPFB.DE" in calls[0]
+
+
+def test_yahoo_daily_fallback_rejects_wrong_currency(monkeypatch):
+    from app import providers
+
+    service = MarketData()
+    async def get(url, params):
+        return httpx.Response(
+            200,
+            json={"chart": {"result": [{
+                "meta": {"currency": "USD"},
+                "timestamp": [1790352000],
+                "indicators": {"quote": [{"close": [72.88]}],
+            }]}},
+            request=httpx.Request("GET", url),
+        )
+
+    service.client.get = get
+
+    async def run():
+        try:
+            return await service._yahoo_daily_quote("IE00B4ND3602")
+        finally:
+            await service.close()
+
+    result = asyncio.run(run())
+    assert result.value is None
+    assert result.error == "currency_mismatch"
+
+
+def test_yahoo_daily_fallback_supports_gold_eur(monkeypatch):
+    from app import providers
+
+    service = MarketData()
+    calls = []
+    async def get(url, params):
+        calls.append(url)
+        return httpx.Response(
+            200,
+            json={"chart": {"result": [{
+                "meta": {"currency": "EUR"},
+                "timestamp": [1790352000],
+                "indicators": {"quote": [{"close": [3450.5]}],
+            }]}},
+            request=httpx.Request("GET", url),
+        )
+
+    service.client.get = get
+
+    async def run():
+        try:
+            return await service._yahoo_daily_quote("XAU-EUR")
+        finally:
+            await service.close()
+
+    result = asyncio.run(run())
+    assert result.value == 3450.5
+    assert result.source == "yahoo_daily"
+    assert "XAUEUR=X" in calls[0]
