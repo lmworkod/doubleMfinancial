@@ -2,7 +2,7 @@ import asyncio
 
 import httpx
 
-from app.providers import DailyBudget, MarketData, _positive_price, _parse_provider_datetime
+from app.providers import DailyBudget, MarketData, _parse_provider_datetime, _positive_price
 
 
 def test_positive_price_rejects_invalid_values():
@@ -106,8 +106,6 @@ def test_stooq_not_used_for_unknown_or_isin_symbol(monkeypatch):
 
 
 def test_fx_uses_frankfurter_when_ecb_unavailable(monkeypatch):
-    from app import providers
-
     service = MarketData()
     calls = []
 
@@ -197,8 +195,6 @@ def test_yahoo_daily_fallback_for_european_etf_checks_currency(monkeypatch):
 
 
 def test_yahoo_daily_fallback_rejects_wrong_currency(monkeypatch):
-    from app import providers
-
     service = MarketData()
     async def get(url, params):
         return httpx.Response(
@@ -225,8 +221,6 @@ def test_yahoo_daily_fallback_rejects_wrong_currency(monkeypatch):
 
 
 def test_yahoo_daily_fallback_supports_gold_eur(monkeypatch):
-    from app import providers
-
     service = MarketData()
     calls = []
     async def get(url, params):
