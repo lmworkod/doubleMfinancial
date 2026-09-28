@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command, CommandStart
@@ -140,19 +141,39 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             return
         market, macro = await services.refresh_quotes(), await services.refresh_macro()
 
+        def age_label(raw: str) -> str:
+            try:
+                observed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if observed.tzinfo is None:
+                    observed = observed.replace(tzinfo=UTC)
+                seconds = max(0, int((datetime.now(UTC) - observed.astimezone(UTC)).total_seconds()))
+                if seconds < 3600:
+                    age = f"{max(1, seconds // 60)} min"
+                elif seconds < 86400:
+                    age = f"{seconds // 3600} h {seconds % 3600 // 60} min"
+                else:
+                    age = f"{seconds // 86400} d {seconds % 86400 // 3600} h"
+                return f" · antigüedad: {age} · observado: {observed.strftime('%Y-%m-%d %H:%M UTC')}"
+            except (ValueError, TypeError):
+                return " · antigüedad: desconocida"
+
         def summarize(results: dict[str, str], *, macro_data: bool = False) -> tuple[int, list[str]]:
             ok = 0
             lines = []
             for symbol, status in results.items():
                 if status == "ok" or status.startswith("ok:"):
                     ok += 1
-                    source = status.partition(":")[2].replace("_", " ").title()
+                    fields = status.split(":", 2)
+                    source = fields[1].replace("_", " ").title() if len(fields) > 1 else ""
                     detail = f" ({source})" if source else ""
-                    lines.append(f"• {symbol}: actualizado{detail}")
+                    age = age_label(fields[2]) if len(fields) > 2 else ""
+                    lines.append(f"• {symbol}: actualizado{detail}{age}")
                     continue
                 stale = status.startswith("stale:")
                 if stale:
-                    lines.append(f"• {symbol}: dato anterior conservado (no se obtuvo una actualización nueva)")
+                    fields = status.split(":", 2)
+                    age = age_label(fields[2]) if len(fields) > 2 else ""
+                    lines.append(f"• {symbol}: dato anterior conservado (no se obtuvo una actualización nueva){age}")
                     continue
                 reason_code = status.partition(":")[2].lower()
                 if "429" in reason_code or "rate_limit" in reason_code or "quota" in reason_code:
@@ -189,7 +210,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         parts.extend(market_lines)
         parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
         parts.extend(macro_lines)
-        parts += ["", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
+        parts += ["", "La antigüedad se calcula desde la observación del proveedor, no desde la última consulta. Los cierres diarios pueden corresponder al último día hábil.", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
         await message.answer("\\n".join(parts))
 
     @dp.message(Command("status"))
