@@ -1,8 +1,10 @@
 import asyncio
+import csv
 import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import StringIO
 
 import httpx
 
@@ -67,6 +69,7 @@ class MarketData:
         self.client = httpx.AsyncClient(
             timeout=settings.http_timeout_seconds,
             follow_redirects=True,
+            headers={"User-Agent": "DoubleMFinancial/0.1 (market-data fallback)"},
         )
 
     async def close(self) -> None:
@@ -84,8 +87,6 @@ class MarketData:
                 if response.status_code == 429 or response.status_code >= 500:
                     reason = _safe_http_error(response)
                     if response.status_code == 429:
-                        # Quota limits are generally account-wide. Don't waste
-                        # further credits retrying the same provider here.
                         logger.warning("%s request throttled", provider)
                         return None, reason
                     if attempt < 2:
@@ -112,8 +113,6 @@ class MarketData:
                 logger.warning("%s request timed out after retries", provider)
                 return None, "timeout"
             except httpx.RequestError as exc:
-                # Log only exception type: httpx exception strings can include
-                # full request URLs and query-string API credentials.
                 if attempt < 2:
                     await asyncio.sleep(2 ** attempt)
                     continue
@@ -121,25 +120,75 @@ class MarketData:
                 return None, "network_error"
         return None, "request_failed"
 
+    async def _get_text(self, url: str, params: dict[str, str], provider: str):
+        """Request text/CSV with the same quota and retry protections."""
+        for attempt in range(3):
+            if not self.budget.consume():
+                return None, None, "daily_request_budget_exhausted"
+            try:
+                response = await self.client.get(url, params=params)
+                if response.status_code == 429:
+                    logger.warning("%s request throttled", provider)
+                    return None, None, "rate_limit"
+                if response.status_code >= 500:
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    return None, None, _safe_http_error(response)
+                if response.is_error:
+                    return None, None, _safe_http_error(response)
+                return response.text, response.headers.get("content-type", ""), None
+            except httpx.TimeoutException:
+                if attempt < 2:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                return None, None, "timeout"
+            except httpx.RequestError as exc:
+                if attempt < 2:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                logger.warning("%s network request failed: %s", provider, type(exc).__name__)
+                return None, None, "network_error"
+        return None, None, "request_failed"
+
+    async def _stooq_quote(self, symbol: str) -> ProviderResult:
+        """Fetch the last daily close for a pre-verified Stooq symbol.
+
+        This fallback is restricted to configured US symbols and uses daily
+        bars only. It is not advertised as an intraday quote.
+        """
+        ticker = STOOQ_SYMBOLS.get(symbol.strip().upper())
+        if not ticker:
+            return ProviderResult(None, "stooq", None, "symbol_not_configured")
+        text, _, error = await self._get_text(
+            "https://stooq.com/q/d/l/", {"s": ticker, "i": "d"}, "stooq"
+        )
+        if error:
+            return ProviderResult(None, "stooq", None, error)
+        try:
+            rows = list(csv.DictReader(StringIO(text or "")))
+            for row in reversed(rows):
+                price = _positive_price(row.get("Close"))
+                observed = datetime.strptime(row["Date"], "%Y-%m-%d").replace(tzinfo=UTC)
+                if price is not None:
+                    return ProviderResult(price, "stooq_daily", observed)
+        except (ValueError, KeyError, TypeError):
+            pass
+        return ProviderResult(None, "stooq", None, "no_valid_observation")
+
     async def quote(self, symbol: str) -> ProviderResult:
         errors: list[str] = []
         twelve_symbol = resolve_symbol(symbol, "twelve_data")
         finnhub_symbol = resolve_symbol(symbol, "finnhub")
-        if twelve_symbol is None and finnhub_symbol is None:
+        is_known_isin = symbol.strip().upper().startswith("IE") and len(symbol.strip()) == 12
+        if twelve_symbol is None and finnhub_symbol is None and not is_known_isin:
             return ProviderResult(None, "none", None, "unmapped_isin")
 
-        # Finnhub's regular quote endpoint is US-equity focused. Do not issue
-        # predictable failing requests for mapped European ETF/ETC listings.
-        # It remains a fallback for regular symbols supplied by the user.
-        is_known_isin = symbol.strip().upper().startswith("IE") and len(symbol.strip()) == 12
         providers: list[tuple[str, str, str]] = []
         if settings.twelve_data_api_key and twelve_symbol:
             providers.append(("twelve_data", twelve_symbol, "https://api.twelvedata.com/quote"))
         if settings.finnhub_api_key and finnhub_symbol and not is_known_isin:
             providers.append(("finnhub", finnhub_symbol, "https://finnhub.io/api/v1/quote"))
-
-        if not providers:
-            return ProviderResult(None, "none", None, "no_eligible_provider_configured")
 
         for provider, ticker, url in providers:
             params = {"symbol": ticker}
@@ -153,14 +202,9 @@ class MarketData:
             payload, error = await self._get_json(url, params, provider)
             if error:
                 errors.append(f"{provider}:{error}")
-                # A transient provider outage or throttling should allow a
-                # different eligible provider to be tried.
                 continue
 
             if provider == "twelve_data":
-                # /quote exposes close and provider metadata. Require its
-                # returned exchange to agree with the requested listing when
-                # both are present, and don't silently use another venue.
                 returned_exchange = str(payload.get("mic_code") or "").upper()
                 expected_exchange = (exchange or "").upper()
                 if expected_exchange and returned_exchange and returned_exchange != expected_exchange:
@@ -184,50 +228,66 @@ class MarketData:
                         reason = "invalid_price"
                     errors.append(f"{provider}:{reason}")
                     logger.info("%s quote rejected: %s", provider, reason)
-                    # Don't call another provider for a permanent error that
-                    # indicates account-wide authentication/entitlement.
-                    if reason in {"unauthorized", "not_entitled", "rate_limit"}:
-                        continue
                     continue
-                return ProviderResult(price, provider, datetime.now(UTC))
+                # Provider quote endpoint's datetime field is the observation
+                # date. If omitted, mark retrieval time as best-effort only.
+                as_of = _parse_provider_datetime(payload.get("datetime")) or datetime.now(UTC)
+                return ProviderResult(price, provider, as_of)
 
             price = _positive_price(payload.get("c"))
             if price is not None:
-                return ProviderResult(price, provider, datetime.now(UTC))
+                timestamp = payload.get("t")
+                as_of = datetime.fromtimestamp(timestamp, UTC) if isinstance(timestamp, (int, float)) and timestamp > 0 else datetime.now(UTC)
+                return ProviderResult(price, provider, as_of)
             errors.append(f"{provider}:quote_unavailable")
-            logger.info("%s returned no current price for %s", provider, symbol)
 
+        # Free, unauthenticated daily close fallback for regular US symbols.
+        stooq = await self._stooq_quote(symbol)
+        if stooq.value is not None:
+            return stooq
+        if stooq.error and stooq.error != "symbol_not_configured":
+            errors.append(f"stooq:{stooq.error}")
+
+        # For mapped European instruments do not guess symbols in third-party
+        # data sources. Their exact listing and currency must be confirmed.
         return ProviderResult(None, "none", None, "; ".join(errors) or "quote_unavailable")
 
     async def fx_usd_per_eur(self) -> ProviderResult:
-        """Fetch the latest ECB daily reference rate (USD per EUR)."""
-        if not self.budget.consume():
+        """Fetch ECB's latest daily reference; use Frankfurter if ECB fails."""
+        if self.budget.consume():
+            try:
+                response = await self.client.get(
+                    "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A",
+                    params={"lastNObservations": 1, "format": "csvdata"},
+                    headers={"Accept": "text/csv"},
+                )
+                if not response.is_error:
+                    rows = list(csv.DictReader(StringIO(response.text)))
+                    if rows and rows[-1].get("OBS_VALUE"):
+                        row = rows[-1]
+                        rate = _positive_price(row["OBS_VALUE"])
+                        if rate is not None:
+                            observed = datetime.fromisoformat(row["TIME_PERIOD"]).replace(tzinfo=UTC)
+                            return ProviderResult(rate, "ecb", observed)
+            except (httpx.RequestError, ValueError, KeyError, TypeError) as exc:
+                logger.info("ECB unavailable: %s", type(exc).__name__)
+        else:
             return ProviderResult(None, "ecb", None, "daily_request_budget_exhausted")
-        try:
-            response = await self.client.get(
-                "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A",
-                params={"lastNObservations": 1, "format": "csvdata"},
-                headers={"Accept": "text/csv"},
-            )
-            if response.is_error:
-                return ProviderResult(None, "ecb", None, _safe_http_error(response))
-            import csv
-            from io import StringIO
 
-            rows = list(csv.DictReader(StringIO(response.text)))
-            if not rows or not rows[-1].get("OBS_VALUE"):
-                return ProviderResult(None, "ecb", None, "no_observation")
-            row = rows[-1]
-            observed = datetime.fromisoformat(row["TIME_PERIOD"]).replace(tzinfo=UTC)
-            rate = _positive_price(row["OBS_VALUE"])
-            if rate is None:
-                return ProviderResult(None, "ecb", None, "invalid_rate")
-            return ProviderResult(rate, "ecb", observed)
-        except httpx.RequestError as exc:
-            logger.warning("ECB request failed: %s", type(exc).__name__)
-            return ProviderResult(None, "ecb", None, "network_error")
-        except (ValueError, KeyError, TypeError):
-            return ProviderResult(None, "ecb", None, "invalid_response")
+        payload, error = await self._get_json(
+            "https://api.frankfurter.dev/v2/rate/eur/usd", {}, "frankfurter"
+        )
+        if error:
+            return ProviderResult(None, "none", None, f"ecb_and_frankfurter:{error}")
+        rate = _positive_price(payload.get("rate"))
+        if rate is None:
+            return ProviderResult(None, "frankfurter", None, "invalid_rate")
+        observed_raw = payload.get("date")
+        try:
+            observed = datetime.fromisoformat(observed_raw).replace(tzinfo=UTC)
+        except (ValueError, TypeError):
+            observed = datetime.now(UTC)
+        return ProviderResult(rate, "frankfurter", observed)
 
     async def fred_latest(self, series_id: str) -> ProviderResult:
         if not settings.fred_api_key:
@@ -253,5 +313,22 @@ class MarketData:
                     continue
         return ProviderResult(None, "fred", None, "no_valid_observations")
 
+
+def _parse_provider_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    except ValueError:
+        return None
+
+
+# Explicit allowlist: no inferred or user-controlled Stooq ticker construction.
+STOOQ_SYMBOLS = {
+    "SPY": "spy.us",
+    "QQQ": "qqq.us",
+    "IWM": "iwm.us",
+}
 
 market_data = MarketData()
