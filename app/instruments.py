@@ -1,7 +1,7 @@
 """Instrument identifiers and provider-specific listed symbols.
 
-The portfolio stores ISINs as stable identifiers. Provider tickers and their
-listing currency are explicit; do not silently substitute another share class.
+The portfolio stores ISINs as stable identifiers. Ticker, exchange and quote
+currency are kept separately because providers use different symbol formats.
 """
 from dataclasses import dataclass
 
@@ -11,41 +11,42 @@ class Instrument:
     isin: str
     name: str
     twelve_data_symbol: str | None
+    twelve_data_exchange: str | None
     finnhub_symbol: str | None
     quote_currency: str
     exchange: str
 
 
-# Tickers are provider-specific where verified. A None means that we do not
-# have a verified ticker/entitlement for that provider; it is not guessed.
+# Only provider symbols with a known listing are configured. Coverage/plan
+# entitlements are still verified by the runtime response, never guessed.
 INSTRUMENTS: dict[str, Instrument] = {
     "IE000J80JTL1": Instrument(
         "IE000J80JTL1", "First Trust Clean Smart Infrastructure UCITS ETF",
-        "GRID", None, "USD", "Borsa Italiana"
+        "GRID", "XMIL", None, "EUR", "Borsa Italiana"
     ),
     "IE0003Z9E2Y3": Instrument(
         "IE0003Z9E2Y3", "Global X Copper Miners UCITS ETF",
-        "COPX", None, "USD", "London Stock Exchange"
+        "COPX", "XLON", None, "USD", "London Stock Exchange"
     ),
     "IE000UL6CLP7": Instrument(
         "IE000UL6CLP7", "Global X Silver Miners UCITS ETF",
-        "SILV", None, "USD", "London Stock Exchange"
+        "SILV", "XLON", None, "USD", "London Stock Exchange"
     ),
     "IE000YU9K6K2": Instrument(
         "IE000YU9K6K2", "VanEck Space Innovators UCITS ETF",
-        "JEDI", None, "USD", "London Stock Exchange"
+        "JEDI", "XLON", None, "USD", "London Stock Exchange"
     ),
     "IE000KHX9DX6": Instrument(
         "IE000KHX9DX6", "WisdomTree Strategic Metals and Rare Earths Miners UCITS ETF",
-        "RARE", None, "USD", "London Stock Exchange"
+        "RARE", "XLON", None, "USD", "London Stock Exchange"
     ),
     "IE00B4ND3602": Instrument(
         "IE00B4ND3602", "iShares Physical Gold ETC",
-        "PPFB:XETR", None, "EUR", "Xetra"
+        "PPFB", "XETR", None, "EUR", "Xetra"
     ),
     "IE000M7V94E1": Instrument(
         "IE000M7V94E1", "VanEck Uranium and Nuclear Technologies UCITS ETF",
-        "NUKL:XETR", None, "EUR", "Xetra"
+        "NUKL", "XETR", None, "EUR", "Xetra"
     ),
 }
 
@@ -66,3 +67,11 @@ def resolve_symbol(symbol: str, provider: str) -> str | None:
     if provider == "twelve_data":
         return item.twelve_data_symbol
     return item.finnhub_symbol
+
+
+def resolve_exchange(symbol: str, provider: str) -> str | None:
+    """Return the provider exchange code for a known instrument."""
+    if provider != "twelve_data":
+        return None
+    item = INSTRUMENTS.get(symbol.strip().upper())
+    return item.twelve_data_exchange if item else None
