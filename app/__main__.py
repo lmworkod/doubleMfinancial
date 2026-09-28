@@ -15,8 +15,8 @@ async def main() -> None:
     await init_db()
     start_health_thread()
     services = Services()
-    scheduler = start_scheduler(services)
     bot, dispatcher = build_bot(services)
+    scheduler = start_scheduler(services, bot)
     try:
         await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
     finally:
