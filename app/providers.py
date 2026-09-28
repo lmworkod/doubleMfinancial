@@ -1,3 +1,6 @@
+import asyncio
+import logging
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -5,6 +8,8 @@ import httpx
 
 from app.config import settings
 from app.instruments import resolve_symbol
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,87 +36,211 @@ class DailyBudget:
         return True
 
 
+def _positive_price(value: object) -> float | None:
+    """Accept finite, strictly positive numeric market prices only."""
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return None
+    return price if math.isfinite(price) and price > 0 else None
+
+
+def _safe_http_error(response: httpx.Response) -> str:
+    """Return a bounded diagnostic without request URLs or credentials."""
+    status = response.status_code
+    if status == 401:
+        return "unauthorized"
+    if status == 403:
+        return "forbidden_or_not_entitled"
+    if status == 404:
+        return "symbol_or_resource_not_found"
+    if status == 429:
+        return "rate_limit"
+    if status >= 500:
+        return f"provider_server_error_{status}"
+    return f"http_error_{status}"
+
+
 class MarketData:
     def __init__(self) -> None:
         self.budget = DailyBudget(settings.provider_daily_budget)
-        self.client = httpx.AsyncClient(timeout=settings.http_timeout_seconds)
+        self.client = httpx.AsyncClient(
+            timeout=settings.http_timeout_seconds,
+            follow_redirects=True,
+        )
 
     async def close(self) -> None:
         await self.client.aclose()
 
+    async def _get_json(
+        self, url: str, params: dict[str, str], provider: str
+    ) -> tuple[dict | None, str | None]:
+        """Request JSON with bounded retries for transient failures only."""
+        for attempt in range(3):
+            if not self.budget.consume():
+                return None, "daily_request_budget_exhausted"
+            try:
+                response = await self.client.get(url, params=params)
+                if response.status_code == 429 or response.status_code >= 500:
+                    reason = _safe_http_error(response)
+                    if attempt < 2:
+                        retry_after = response.headers.get("Retry-After")
+                        try:
+                            delay = min(max(float(retry_after), 0.0), 8.0) if retry_after else 2 ** attempt
+                        except ValueError:
+                            delay = 2 ** attempt
+                        await asyncio.sleep(delay)
+                        continue
+                    logger.warning("%s request failed: %s", provider, reason)
+                    return None, reason
+                if response.is_error:
+                    reason = _safe_http_error(response)
+                    logger.info("%s request failed: %s", provider, reason)
+                    return None, reason
+                try:
+                    payload = response.json()
+                except ValueError:
+                    logger.warning("%s returned invalid JSON", provider)
+                    return None, "invalid_json"
+                if not isinstance(payload, dict):
+                    return None, "unexpected_response"
+                return payload, None
+            except httpx.TimeoutException:
+                if attempt < 2:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                logger.warning("%s request timed out after retries", provider)
+                return None, "timeout"
+            except httpx.RequestError as exc:
+                # Log only exception type: httpx exception strings can include
+                # full request URLs and query-string API credentials.
+                if attempt < 2:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                logger.warning("%s network request failed: %s", provider, type(exc).__name__)
+                return None, "network_error"
+        return None, "request_failed"
+
     async def quote(self, symbol: str) -> ProviderResult:
-        errors = []
+        errors: list[str] = []
         twelve_symbol = resolve_symbol(symbol, "twelve_data")
         finnhub_symbol = resolve_symbol(symbol, "finnhub")
         if twelve_symbol is None and finnhub_symbol is None:
-            return ProviderResult(None, "none", None, "Unmapped ISIN: configure a verified listing ticker")
+            return ProviderResult(None, "none", None, "unmapped_isin")
 
-        if settings.twelve_data_api_key and twelve_symbol and self.budget.consume():
-            try:
-                response = await self.client.get("https://api.twelvedata.com/price",
-                    params={"symbol": twelve_symbol, "apikey": settings.twelve_data_api_key})
-                response.raise_for_status()
-                payload = response.json()
-                if payload.get("price") is not None:
-                    return ProviderResult(float(payload["price"]), "twelve_data", datetime.now(UTC))
-                errors.append(f"Twelve Data: {payload.get('message', 'price unavailable')}")
-            except (httpx.HTTPError, ValueError, TypeError) as exc:
-                errors.append(f"Twelve Data: {exc}")
-        if settings.finnhub_api_key and finnhub_symbol and self.budget.consume():
-            try:
-                response = await self.client.get("https://finnhub.io/api/v1/quote",
-                    params={"symbol": finnhub_symbol, "token": settings.finnhub_api_key})
-                response.raise_for_status()
-                price = float(response.json().get("c") or 0)
-                if price > 0:
-                    return ProviderResult(price, "finnhub", datetime.now(UTC))
-                errors.append("Finnhub: quote unavailable")
-            except (httpx.HTTPError, ValueError, TypeError) as exc:
-                errors.append(f"Finnhub: {exc}")
-        return ProviderResult(None, "none", None, "; ".join(errors) or "No provider configured or budget exhausted")
+        # Finnhub's regular quote endpoint is US-equity focused. Do not issue
+        # predictable failing requests for mapped European ETF/ETC listings.
+        # It remains a fallback for regular symbols supplied by the user.
+        is_known_isin = symbol.strip().upper().startswith("IE") and len(symbol.strip()) == 12
+        providers: list[tuple[str, str, str]] = []
+        if settings.twelve_data_api_key and twelve_symbol:
+            providers.append(("twelve_data", twelve_symbol, "https://api.twelvedata.com/quote"))
+        if settings.finnhub_api_key and finnhub_symbol and not is_known_isin:
+            providers.append(("finnhub", finnhub_symbol, "https://finnhub.io/api/v1/quote"))
+
+        if not providers:
+            return ProviderResult(None, "none", None, "no_eligible_provider_configured")
+
+        for provider, ticker, url in providers:
+            params = {"symbol": ticker}
+            params["apikey" if provider == "twelve_data" else "token"] = (
+                settings.twelve_data_api_key if provider == "twelve_data"
+                else settings.finnhub_api_key
+            )
+            payload, error = await self._get_json(url, params, provider)
+            if error:
+                errors.append(f"{provider}:{error}")
+                # A transient provider outage or throttling should allow a
+                # different eligible provider to be tried.
+                continue
+
+            if provider == "twelve_data":
+                raw = payload.get("close") or payload.get("price")
+                price = _positive_price(raw)
+                if price is None:
+                    api_status = str(payload.get("status", "")).lower()
+                    message = str(payload.get("message", "")).lower()
+                    code = str(payload.get("code", ""))
+                    if code == "401" or "apikey" in message or "api key" in message:
+                        reason = "unauthorized"
+                    elif code == "403" or "permission" in message or "plan" in message:
+                        reason = "not_entitled"
+                    elif code == "429" or "run out of api credits" in message or "limit" in message:
+                        reason = "rate_limit"
+                    elif api_status == "error":
+                        reason = "symbol_unavailable"
+                    else:
+                        reason = "invalid_price"
+                    errors.append(f"{provider}:{reason}")
+                    logger.info("%s quote rejected: %s", provider, reason)
+                    # Don't call another provider for a permanent error that
+                    # indicates account-wide authentication/entitlement.
+                    if reason in {"unauthorized", "not_entitled", "rate_limit"}:
+                        continue
+                    continue
+                return ProviderResult(price, provider, datetime.now(UTC))
+
+            price = _positive_price(payload.get("c"))
+            if price is not None:
+                return ProviderResult(price, provider, datetime.now(UTC))
+            errors.append(f"{provider}:quote_unavailable")
+            logger.info("%s returned no current price for %s", provider, symbol)
+
+        return ProviderResult(None, "none", None, "; ".join(errors) or "quote_unavailable")
 
     async def fx_usd_per_eur(self) -> ProviderResult:
         """Fetch the latest ECB daily reference rate (USD per EUR)."""
         if not self.budget.consume():
-            return ProviderResult(None, "ecb", None, "Daily request budget exhausted")
+            return ProviderResult(None, "ecb", None, "daily_request_budget_exhausted")
         try:
             response = await self.client.get(
                 "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A",
                 params={"lastNObservations": 1, "format": "csvdata"},
                 headers={"Accept": "text/csv"},
             )
-            response.raise_for_status()
+            if response.is_error:
+                return ProviderResult(None, "ecb", None, _safe_http_error(response))
             import csv
             from io import StringIO
 
             rows = list(csv.DictReader(StringIO(response.text)))
             if not rows or not rows[-1].get("OBS_VALUE"):
-                return ProviderResult(None, "ecb", None, "No ECB USD/EUR observation")
+                return ProviderResult(None, "ecb", None, "no_observation")
             row = rows[-1]
             observed = datetime.fromisoformat(row["TIME_PERIOD"]).replace(tzinfo=UTC)
-            return ProviderResult(float(row["OBS_VALUE"]), "ecb", observed)
-        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            return ProviderResult(None, "ecb", None, str(exc))
+            rate = _positive_price(row["OBS_VALUE"])
+            if rate is None:
+                return ProviderResult(None, "ecb", None, "invalid_rate")
+            return ProviderResult(rate, "ecb", observed)
+        except httpx.RequestError as exc:
+            logger.warning("ECB request failed: %s", type(exc).__name__)
+            return ProviderResult(None, "ecb", None, "network_error")
+        except (ValueError, KeyError, TypeError):
+            return ProviderResult(None, "ecb", None, "invalid_response")
 
     async def fred_latest(self, series_id: str) -> ProviderResult:
         if not settings.fred_api_key:
-            return ProviderResult(None, "fred", None, "FRED_API_KEY not configured")
-        if not self.budget.consume():
-            return ProviderResult(None, "fred", None, "Daily request budget exhausted")
-        try:
-            response = await self.client.get("https://api.stlouisfed.org/fred/series/observations",
-                params={"series_id": series_id, "api_key": settings.fred_api_key,
-                        "file_type": "json", "sort_order": "desc", "limit": 10})
-            response.raise_for_status()
-            observations = response.json().get("observations", [])
-            for item in observations:
-                value = item.get("value")
-                if value not in (None, "", "."):
+            return ProviderResult(None, "fred", None, "fred_api_key_not_configured")
+        payload, error = await self._get_json(
+            "https://api.stlouisfed.org/fred/series/observations",
+            {"series_id": series_id, "api_key": settings.fred_api_key,
+             "file_type": "json", "sort_order": "desc", "limit": "10"},
+            "fred",
+        )
+        if error:
+            return ProviderResult(None, "fred", None, error)
+        for item in payload.get("observations", []):
+            value = item.get("value")
+            if value not in (None, "", "."):
+                try:
                     as_of = datetime.fromisoformat(item["date"]).replace(tzinfo=UTC)
-                    return ProviderResult(float(value), "fred", as_of)
-            return ProviderResult(None, "fred", None, "No valid observations")
-        except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
-            return ProviderResult(None, "fred", None, str(exc))
+                    number = float(value)
+                    if not math.isfinite(number):
+                        continue
+                    return ProviderResult(number, "fred", as_of)
+                except (ValueError, TypeError, KeyError):
+                    continue
+        return ProviderResult(None, "fred", None, "no_valid_observations")
 
 
 market_data = MarketData()
