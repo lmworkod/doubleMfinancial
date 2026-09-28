@@ -211,7 +211,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
         parts.extend(macro_lines)
         parts += ["", "La antigüedad se calcula desde la observación del proveedor, no desde la última consulta. Los cierres diarios pueden corresponder al último día hábil.", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
-        await message.answer("\\n".join(parts))
+        await message.answer("\n".join(parts))
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:
