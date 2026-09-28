@@ -34,5 +34,5 @@ def build_daily_digest(now: datetime | None = None) -> str:
     lines.extend(["", "🕒 Últimas consultas",
                   f"• Mercado: {market_refresh.value if market_refresh else 'pendiente'}",
                   f"• Macro: {macro_refresh.value if macro_refresh else 'pendiente'}",
-                  "", "Los cierres diarios pueden corresponder al último día hábil. Las cotizaciones fallidas conservan el último valor válido; comprueba su fecha antes de interpretar la valoración. El P/L usa el tipo FX actual, no el histórico. No incluye efectivo ni comisiones. El modelo SP500-VRM sigue sin probabilidades calibradas."])
+                  "", "Los cierres diarios pueden corresponder al último día hábil. Las cotizaciones fallidas conservan el último valor válido; comprueba su fecha antes de interpretar la valoración. El P/L usa el tipo FX actual, no el histórico. No incluye efectivo ni comisiones. El modelo SP500-VRM sigue sin probabilidades calibradas (no calibradas ni validadas)."])
     return "\n".join(lines)
