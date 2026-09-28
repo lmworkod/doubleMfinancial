@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.config import settings
+from app.instruments import resolve_symbol
 
 
 @dataclass
@@ -40,10 +41,15 @@ class MarketData:
 
     async def quote(self, symbol: str) -> ProviderResult:
         errors = []
-        if settings.twelve_data_api_key and self.budget.consume():
+        twelve_symbol = resolve_symbol(symbol, "twelve_data")
+        finnhub_symbol = resolve_symbol(symbol, "finnhub")
+        if twelve_symbol is None and finnhub_symbol is None:
+            return ProviderResult(None, "none", None, "Unmapped ISIN: configure a verified listing ticker")
+
+        if settings.twelve_data_api_key and twelve_symbol and self.budget.consume():
             try:
                 response = await self.client.get("https://api.twelvedata.com/price",
-                    params={"symbol": symbol, "apikey": settings.twelve_data_api_key})
+                    params={"symbol": twelve_symbol, "apikey": settings.twelve_data_api_key})
                 response.raise_for_status()
                 payload = response.json()
                 if payload.get("price") is not None:
@@ -51,10 +57,10 @@ class MarketData:
                 errors.append(f"Twelve Data: {payload.get('message', 'price unavailable')}")
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 errors.append(f"Twelve Data: {exc}")
-        if settings.finnhub_api_key and self.budget.consume():
+        if settings.finnhub_api_key and finnhub_symbol and self.budget.consume():
             try:
                 response = await self.client.get("https://finnhub.io/api/v1/quote",
-                    params={"symbol": symbol, "token": settings.finnhub_api_key})
+                    params={"symbol": finnhub_symbol, "token": settings.finnhub_api_key})
                 response.raise_for_status()
                 price = float(response.json().get("c") or 0)
                 if price > 0:
