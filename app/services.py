@@ -51,7 +51,7 @@ class Services:
             if result.value is None:
                 previous = db.get_metric(f"fred_{name}")
                 results[name] = (
-                    f"stale:{result.error or 'data_unavailable'}"
+                    f"stale:{result.error or 'data_unavailable'}:{db.get_metric(f'fred_{name}_as_of').value if db.get_metric(f'fred_{name}_as_of') else 'unknown'}"
                     if previous is not None
                     else f"unavailable:{result.error or 'data_unavailable'}"
                 )
@@ -59,6 +59,6 @@ class Services:
                 continue
             db.set_metric(f"fred_{name}", str(result.value))
             db.set_metric(f"fred_{name}_as_of", result.as_of.isoformat() if result.as_of else "unknown")
-            results[name] = "ok"
+            results[name] = f"ok:fred:{result.as_of.isoformat() if result.as_of else 'unknown'}"
         db.set_metric("last_macro_refresh", datetime.now(UTC).isoformat())
         return results
