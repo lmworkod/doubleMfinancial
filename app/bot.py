@@ -151,6 +151,9 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                     lines.append(f"• {symbol}: actualizado{detail}")
                     continue
                 stale = status.startswith("stale:")
+                if stale:
+                    lines.append(f"• {symbol}: dato anterior conservado (no se obtuvo una actualización nueva)")
+                    continue
                 reason_code = status.partition(":")[2].lower()
                 if "429" in reason_code or "rate_limit" in reason_code or "quota" in reason_code:
                     reason = "límite de consultas del proveedor"
