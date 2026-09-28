@@ -43,6 +43,7 @@ def test_quote_uses_twelve_data_quote_endpoint_and_validates_price(monkeypatch):
     assert result.value == 24.1
     assert result.source == "twelve_data"
     assert calls[0][0].endswith("/quote")
+    assert calls[0][1]["symbol"] == "SPY"
 
 
 def test_quote_does_not_try_finnhub_for_known_european_isin(monkeypatch):
