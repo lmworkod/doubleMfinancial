@@ -7,6 +7,7 @@ Telegram-first, self-hosted portfolio and market-risk assistant. Python, Postgre
 - Telegram commands for a manually maintained portfolio, quotes, macro data, refresh and status.
 - PostgreSQL persistence for holdings, current quotes and macro metrics.
 - Optional connectors: FRED, Twelve Data and Finnhub. Provider failures are classified, transient failures receive bounded retries, and previous valid data is retained when a refresh cannot obtain a new value.
+- Free fallback for daily closes of explicitly allowlisted US tickers via Stooq, plus Frankfurter as an unauthenticated FX fallback to the ECB.
 - ISIN-to-listed-symbol mapping for selected UCITS ETFs. Provider coverage is checked at runtime; unknown ISINs are not sent as exchange tickers.
 - Daily risk-feature foundation. Probabilities remain disabled until a model is trained and validated walk-forward.
 - Native Ubuntu deployment with systemd, SSH-based updates, journald logs and PostgreSQL backups.
@@ -83,15 +84,17 @@ pytest -q
 
 `/start`, `/help`, `/portfolio`, `/add SYMBOL QUANTITY [AVERAGE_COST]`, `/remove SYMBOL`, `/analyze SYMBOL`, `/watchlist`, `/opportunities`, `/risk`, `/macro`, `/refresh`, `/status`.
 
-Positions are entered manually; there is no broker connection. Valuation includes only positions with a stored quote that can be converted to EUR; cash and fees are excluded. USD positions use the latest stored ECB USD-per-EUR reference rate.
+Positions are entered manually; there is no broker connection. Valuation includes only positions with a stored quote that can be converted to EUR; cash and fees are excluded. USD positions use the latest stored ECB/Frankfurter USD-per-EUR reference rate.
 
 ## Instrument mapping
 
 The database keeps the ISIN as the holding identifier; the market-data layer resolves supported ISINs to provider tickers. The mapping lives in `app/instruments.py`. Provider results are not guaranteed by the presence of a mapping: data coverage, symbol syntax and entitlements depend on each provider. Instruments without a verified mapping remain unavailable instead of being queried under an invalid ticker.
 
-The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1, GRID), Global X Copper Miners (IE0003Z9E2Y3, COPX), Global X Silver Miners (IE000UL6CLP7, SILV), VanEck Space Innovators (IE000YU9K6K2, JEDI), WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6, RARE), iShares Physical Gold ETC (IE00B4ND3602, PPFB on Xetra) and VanEck Uranium and Nuclear Technologies UCITS ETF (IE000M7V94E1, NUKL on Xetra). Only Twelve Data symbols are configured for these mapped ISINs. Finnhub's ordinary quote endpoint is used only for regular tickers; its documentation states that international real-time stock quotes require Enterprise access. A mapping does not guarantee live coverage or entitlement.
+The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1, GRID), Global X Copper Miners (IE0003Z9E2Y3, COPX), Global X Silver Miners (IE000UL6CLP7, SILV), VanEck Space Innovators (IE000YU9K6K2, JEDI), WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6, RARE), iShares Physical Gold ETC (IE00B4ND3602, PPFB on Xetra) and VanEck Uranium and Nuclear Technologies UCITS ETF (IE000M7V94E1, NUKL on Xetra). Only Twelve Data symbols are configured for these mapped ISINs. Finnhub's ordinary quote endpoint is used only for regular tickers; its international real-time data requires higher-tier access.
 
-Portfolio market values and P/L are converted to EUR using the latest available ECB USD/EUR reference rate (daily, on working days). EUR quotes need no conversion. If the USD/EUR rate is unavailable, USD-denominated values are omitted from the EUR total rather than treated as EUR. P/L conversion uses the current rate, not the historical exchange rate at purchase, so it is an indicative EUR P/L rather than an exact tax or transaction result.
+The Stooq fallback is deliberately restricted to SPY, QQQ and IWM and returns daily bars, not live quotes. It does not guess exchange suffixes for European instruments. Stooq access/quota and redistribution terms can change; validate the provider's terms and current API access before relying on it. Frankfurter provides daily FX reference rates without an API key and is used only when the ECB fetch fails. FX rates are reference rates, not execution rates.
+
+Yahoo Finance chart is used only as a best-effort daily fallback for explicitly mapped ETF listings and XAU/EUR. It is an undocumented endpoint, can be throttled or changed without notice, and its commercial/redistribution permissions are unclear; do not treat it as a licensed feed or as real-time data. The fallback validates the returned currency and uses the observation timestamp. For the iShares Physical Gold ETC, the preferred value remains the actual exchange-listed PPFB quote; XAU/EUR is a separate spot reference and is never substituted for the ETC price.
 
 ## Data and model limits
 

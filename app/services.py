@@ -15,14 +15,14 @@ class Services:
         for symbol in symbols:
             result = await market_data.quote(symbol)
             if result.value is not None:
-                db.upsert_quote(symbol, result.value, result.source)
-                results[symbol] = f"ok:{result.source}"
+                db.upsert_quote(symbol, result.value, result.source, result.as_of)
+                results[symbol] = f"ok:{result.source}:{result.as_of.isoformat() if result.as_of else 'unknown'}"
             else:
                 # Preserve the last known quote. Never replace it with zero,
                 # NaN, or a fabricated value when providers are unavailable.
                 previous = db.quote_for(symbol)
                 results[symbol] = (
-                    f"stale:{result.error or 'quote_unavailable'}"
+                    f"stale:{result.error or 'quote_unavailable'}:{previous.observed_at.isoformat() if previous else 'unknown'}"
                     if previous is not None
                     else f"unavailable:{result.error or 'quote_unavailable'}"
                 )
@@ -31,11 +31,11 @@ class Services:
         if fx.value is not None:
             db.set_metric("fx_usd_per_eur", str(fx.value))
             db.set_metric("fx_usd_per_eur_as_of", fx.as_of.isoformat() if fx.as_of else "unknown")
-            results["FX_USD_EUR"] = "ok:ecb"
+            results["FX_USD_EUR"] = f"ok:{fx.source}:{fx.as_of.isoformat() if fx.as_of else 'unknown'}"
         else:
             previous_fx = db.get_metric("fx_usd_per_eur")
             results["FX_USD_EUR"] = (
-                f"stale:{fx.error or 'rate_unavailable'}"
+                f"stale:{fx.error or 'rate_unavailable'}:{db.get_metric('fx_usd_per_eur_as_of').value if db.get_metric('fx_usd_per_eur_as_of') else 'unknown'}"
                 if previous_fx is not None
                 else f"unavailable:{fx.error or 'rate_unavailable'}"
             )
@@ -51,7 +51,7 @@ class Services:
             if result.value is None:
                 previous = db.get_metric(f"fred_{name}")
                 results[name] = (
-                    f"stale:{result.error or 'data_unavailable'}"
+                    f"stale:{result.error or 'data_unavailable'}:{db.get_metric(f'fred_{name}_as_of').value if db.get_metric(f'fred_{name}_as_of') else 'unknown'}"
                     if previous is not None
                     else f"unavailable:{result.error or 'data_unavailable'}"
                 )
@@ -59,6 +59,6 @@ class Services:
                 continue
             db.set_metric(f"fred_{name}", str(result.value))
             db.set_metric(f"fred_{name}_as_of", result.as_of.isoformat() if result.as_of else "unknown")
-            results[name] = "ok"
+            results[name] = f"ok:fred:{result.as_of.isoformat() if result.as_of else 'unknown'}"
         db.set_metric("last_macro_refresh", datetime.now(UTC).isoformat())
         return results
