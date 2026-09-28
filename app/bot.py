@@ -140,33 +140,41 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             return
         market, macro = await services.refresh_quotes(), await services.refresh_macro()
 
-        def summarize(results: dict[str, str]) -> list[str]:
+        def summarize(results: dict[str, str], *, macro_data: bool = False) -> tuple[int, list[str]]:
+            ok = 0
             lines = []
             for symbol, status in results.items():
-                if status.startswith("ok:"):
+                if status == "ok" or status.startswith("ok:"):
+                    ok += 1
                     source = status.partition(":")[2].replace("_", " ").title()
-                    lines.append(f"• {symbol}: actualizado ({source})")
+                    detail = f" ({source})" if source else ""
+                    lines.append(f"• {symbol}: actualizado{detail}")
                     continue
-                raw_reason = status.partition(":")[2].lower()
-                if "429" in raw_reason or "quota" in raw_reason or "rate limit" in raw_reason:
+                stale = status.startswith("stale:")
+                reason_code = status.partition(":")[2].lower()
+                if "429" in reason_code or "rate_limit" in reason_code or "quota" in reason_code:
                     reason = "límite de consultas del proveedor"
-                elif "403" in raw_reason or "forbidden" in raw_reason or "unauthorized" in raw_reason:
-                    reason = "proveedor sin autorización o acceso no disponible"
-                elif "404" in raw_reason or "not found" in raw_reason:
+                elif "403" in reason_code or "forbidden" in reason_code or "not_entitled" in reason_code:
+                    reason = "el proveedor no permite este acceso"
+                elif "404" in reason_code or "not_found" in reason_code or "symbol_unavailable" in reason_code:
                     reason = "símbolo no disponible en el proveedor"
-                elif "budget" in raw_reason or "presupuesto" in raw_reason:
+                elif "budget" in reason_code:
                     reason = "presupuesto diario de consultas agotado"
-                elif "not configured" in raw_reason or "no provider configured" in raw_reason:
-                    reason = "ningún proveedor configurado"
+                elif "unauthorized" in reason_code:
+                    reason = "credenciales del proveedor no válidas"
+                elif "timeout" in reason_code or "network" in reason_code or "server_error" in reason_code:
+                    reason = "fallo temporal del proveedor"
+                elif "no_eligible_provider" in reason_code or "not_configured" in reason_code:
+                    reason = "no hay proveedor habilitado"
                 else:
-                    reason = "cotización no disponible"
-                lines.append(f"• {symbol}: sin actualizar ({reason})")
-            return lines
+                    reason = "dato no disponible"
+                suffix = " · se conserva el último dato" if stale else ""
+                lines.append(f"• {symbol}: {'sin actualizar' if not stale else 'dato anterior conservado'} ({reason}){suffix}")
+            return ok, lines
 
-        market_lines, macro_lines = summarize(market), summarize(macro)
-        market_ok = sum(value.startswith("ok:") for value in market.values())
+        market_ok, market_lines = summarize(market)
+        macro_ok, macro_lines = summarize(macro, macro_data=True)
         market_failed = len(market) - market_ok
-        macro_ok = sum(value == "ok" for value in macro.values())
         macro_failed = len(macro) - macro_ok
         if market_failed == 0 and macro_failed == 0:
             heading = "Actualización completada correctamente."
@@ -178,8 +186,8 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         parts.extend(market_lines)
         parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
         parts.extend(macro_lines)
-        parts += ["", "Los detalles técnicos se conservan en los registros del servicio."]
-        await message.answer("\n".join(parts))
+        parts += ["", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
+        await message.answer("\\n".join(parts))
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:
