@@ -159,8 +159,8 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         parts.extend([
             "",
             "SP500-VRM: probabilidades no calibradas; no se estima una probabilidad de caída.",
-            "Este informe evalúa la disponibilidad de datos y el P/L registrado, no predice pérdidas "
-            "ni constituye una señal de compra o venta.",
+            ("Este informe evalúa la disponibilidad de datos y el P/L registrado, no predice pérdidas "
+             "ni constituye una señal de compra o venta."),
         ])
         await message.answer("\\n".join(parts))
 
