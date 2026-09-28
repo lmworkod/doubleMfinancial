@@ -1,0 +1,28 @@
+[Unit]
+Description=DoubleM Financial Telegram bot
+Wants=network-online.target
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=doublem
+Group=doublem
+WorkingDirectory=/opt/doublemfinancial
+EnvironmentFile=/etc/doublemfinancial/doublem.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/doublemfinancial/.venv/bin/python -m app
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/doublemfinancial
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

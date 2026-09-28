@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -18,10 +18,10 @@ class DailyBudget:
     """A conservative in-process request budget, reset at UTC midnight."""
     def __init__(self, limit: int = 700):
         self.limit, self.used = max(0, limit), 0
-        self.day = datetime.now(timezone.utc).date()
+        self.day = datetime.now(UTC).date()
 
     def consume(self) -> bool:
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         if today != self.day:
             self.day, self.used = today, 0
         if self.used >= self.limit:
@@ -47,7 +47,7 @@ class MarketData:
                 response.raise_for_status()
                 payload = response.json()
                 if payload.get("price") is not None:
-                    return ProviderResult(float(payload["price"]), "twelve_data", datetime.now(timezone.utc))
+                    return ProviderResult(float(payload["price"]), "twelve_data", datetime.now(UTC))
                 errors.append(f"Twelve Data: {payload.get('message', 'price unavailable')}")
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 errors.append(f"Twelve Data: {exc}")
@@ -58,7 +58,7 @@ class MarketData:
                 response.raise_for_status()
                 price = float(response.json().get("c") or 0)
                 if price > 0:
-                    return ProviderResult(price, "finnhub", datetime.now(timezone.utc))
+                    return ProviderResult(price, "finnhub", datetime.now(UTC))
                 errors.append("Finnhub: quote unavailable")
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 errors.append(f"Finnhub: {exc}")
@@ -78,7 +78,7 @@ class MarketData:
             for item in observations:
                 value = item.get("value")
                 if value not in (None, "", "."):
-                    as_of = datetime.fromisoformat(item["date"]).replace(tzinfo=timezone.utc)
+                    as_of = datetime.fromisoformat(item["date"]).replace(tzinfo=UTC)
                     return ProviderResult(float(value), "fred", as_of)
             return ProviderResult(None, "fred", None, "No valid observations")
         except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:

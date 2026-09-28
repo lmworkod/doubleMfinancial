@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 
@@ -11,5 +12,5 @@ def health() -> dict[str, str]:
         with db.engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
         return {"status": "ok"}
-    except Exception:
+    except SQLAlchemyError:
         return {"status": "degraded"}
