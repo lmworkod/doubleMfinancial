@@ -70,6 +70,103 @@ sudo bash /opt/doublemfinancial/scripts/backup.sh
 
 The deployment script refuses to proceed if the working tree has local modifications and uses `git pull --ff-only`. It does not delete data or perform destructive database migrations. Take a backup before upgrades and test restoration periodically. For a manual rollback, check out a known-good commit and reinstall it before restarting the service.
 
+## Architecture
+
+The production SSH installation runs natively on Ubuntu under systemd. The Python entry point initializes PostgreSQL, starts a loopback-only health endpoint and APScheduler, then starts the Telegram bot using long polling. The bot and scheduled jobs use the shared services layer, which coordinates persistence and market/macro data providers.
+
+```mermaid
+flowchart TB
+    User[Telegram user] <-->|Commands and responses| Telegram[Telegram Bot API]
+    subgraph VPS["Ubuntu 24.04 VPS"]
+      subgraph Service["doublem.service · systemd"]
+        Main["Python app entry point"]
+        Bot["aiogram bot / dispatcher"]
+        Services["Application services"]
+        Scheduler["APScheduler · scheduled jobs"]
+        Health["FastAPI health endpoint · loopback"]
+        Main --> Bot
+        Main --> Services
+        Main --> Scheduler
+        Main --> Health
+        Bot <--> Services
+        Scheduler --> Services
+      end
+      DB[(Local PostgreSQL)]
+      Env["/etc/doublemfinancial/doublem.env"]
+      Deploy["SSH deploy · Git + pip + systemd"]
+      Backup["PostgreSQL backup script"]
+      Services <--> DB
+      Main -. reads config .-> Env
+      Deploy --> Service
+      DB --> Backup
+    end
+    Services <--> Market["Market data · Twelve Data / Finnhub / Stooq / Yahoo best-effort"]
+    Services <--> Macro["Macro and FX · FRED / ECB / Frankfurter"]
+    Bot <-->|Long polling| Telegram
+```
+
+### Component responsibilities
+
+1. **Telegram interface:** `aiogram` receives updates through outbound long polling and dispatches commands. Access is restricted by `TELEGRAM_ALLOWED_USER_IDS`; an empty allowlist denies all users.
+2. **Application services:** coordinate portfolio operations, market-data refreshes, macro data and persistence.
+3. **Scheduled jobs:** APScheduler runs recurring jobs inside the application process and reuses the services layer.
+4. **Data providers:** configured market and macro providers supply quotes, daily observations and reference rates. Coverage, quotas, timestamps and entitlements vary by provider. Failed refreshes retain the last valid value and mark it stale rather than replacing it with zero.
+5. **Persistence:** local PostgreSQL stores holdings, quotes and macro metrics.
+6. **Health and operations:** the health endpoint is loopback-only. systemd supervises the application; journald stores its logs. The backup script backs up PostgreSQL.
+
+### Production VPS configuration
+
+The supported SSH deployment is a native systemd service. Docker Compose is an optional legacy/local configuration and is **not** the active production deployment.
+
+| Item | Configuration |
+|---|---|
+| Repository | `/opt/doublemfinancial` |
+| Branch | `main` |
+| Service user | `doublem` |
+| systemd service / unit | `doublem.service` |
+| Unit file | `/etc/systemd/system/doublem.service` |
+| Working directory | `/opt/doublemfinancial` |
+| Virtual environment | `/opt/doublemfinancial/.venv` |
+| Entry point | `/opt/doublemfinancial/.venv/bin/python -m app` |
+| Environment file | `/etc/doublemfinancial/doublem.env` |
+| Database service | `postgresql.service` |
+| Logs | `journalctl -u doublem.service` |
+
+The environment file contains secrets and must remain outside Git. Never print or share its contents.
+
+### Ports and health checks
+
+- Telegram uses outbound long polling and does not require a public inbound port.
+- The health endpoint is intended for loopback access, not public exposure.
+- Do not assume that port **8081** is listening; verify the configured application port and the actual socket.
+- During a VPS check on 2026-09-28, `docker-proxy` was observed occupying `0.0.0.0:8080`, while application logs reported an `address already in use` error when binding `127.0.0.1:8080`. No listener on 8081 was observed at that time. This indicates a port conflict requiring investigation; it does not prove the health endpoint is available.
+- Do not kill or restart an unidentified process to resolve a port conflict. The VPS also hosts unrelated Docker/Coolify workloads.
+
+### Manual update of the existing SSH installation
+
+If the deployment script cannot be used, this is the verified update sequence for the existing installation. The `sudo` Git commands are intentional because the Git index may be root-owned; dependencies are installed as the service account.
+
+```bash
+cd /opt/doublemfinancial
+sudo git fetch origin
+sudo git checkout main
+sudo git pull --ff-only origin main
+sudo -u doublem /opt/doublemfinancial/.venv/bin/pip install .
+sudo systemctl restart doublem.service
+```
+
+Verify the service, recent logs and port separately:
+
+```bash
+sudo systemctl is-active doublem.service
+sudo journalctl -u doublem.service -n 100 --no-pager
+sudo ss -lntp | grep ':8081' || true
+```
+
+A successful package installation and an `active` systemd state do not, by themselves, prove that Telegram polling is healthy or that the HTTP health endpoint is listening. Review fresh logs and verify the relevant listener. Preserve port 8081 where intended, but confirm the application's configured port before diagnosing it.
+
+**Do not run `docker compose up -d --build` or `docker compose down` to update the production SSH installation.** The production app is managed by systemd. Do not restart or modify Coolify or unrelated containers as part of an application update.
+
 ## Local development
 
 ```bash
