@@ -122,8 +122,47 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
 
     @dp.message(Command("risk"))
     async def risk(message: Message) -> None:
-        if await authorized(message):
-            await message.answer("SP500-VRM: probabilidad no calibrada. No hay aún un modelo entrenado y validado walk-forward. No se muestran probabilidades ficticias ni se modifica la exposición automáticamente.")
+        if not await authorized(message):
+            return
+        from app.risk import RiskObservation, portfolio_risk_report
+
+        holdings = db.get_holdings()
+        if not holdings:
+            await message.answer(
+                "Diagnóstico de riesgo\n\nNo hay posiciones registradas. "
+                "SP500-VRM continúa sin probabilidades calibradas."
+            )
+            return
+        observations = []
+        for holding in holdings:
+            quote = db.quote_for(holding.symbol)
+            observations.append(RiskObservation(
+                symbol=holding.symbol,
+                price=quote.price if quote else None,
+                currency=quote_currency(holding.symbol, settings.default_currency),
+                observed_at=quote.observed_at if quote else None,
+                source=quote.source if quote else None,
+                average_cost=holding.average_cost,
+            ))
+        report = portfolio_risk_report(observations)
+        labels = {"critical": "CRÍTICO · CALIDAD DE DATOS", "warning": "REVISAR · CALIDAD DE DATOS",
+                  "info": "SIN INCIDENCIAS OBSERVABLES"}
+        parts = ["Diagnóstico de riesgo · cartera", ""]
+        for item in report:
+            parts.append(f"• {item.symbol}: {labels[item.level]}")
+            if item.price_age_hours is not None:
+                parts.append(f"  Antigüedad de cotización: {item.price_age_hours:.1f} h")
+            if item.pnl_pct is not None:
+                parts.append(f"  P/L vs. coste medio registrado: {item.pnl_pct:+.2%}")
+            for finding in item.findings:
+                parts.append(f"  - {finding.label}: {finding.detail}")
+        parts.extend([
+            "",
+            "SP500-VRM: probabilidades no calibradas; no se estima una probabilidad de caída.",
+            "Este informe evalúa la disponibilidad de datos y el P/L registrado, no predice pérdidas "
+            "ni constituye una señal de compra o venta.",
+        ])
+        await message.answer("\\n".join(parts))
 
     @dp.message(Command("macro"))
     async def macro(message: Message) -> None:
