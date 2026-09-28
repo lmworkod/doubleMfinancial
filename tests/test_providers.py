@@ -206,7 +206,7 @@ def test_yahoo_daily_fallback_rejects_wrong_currency(monkeypatch):
             json={"chart": {"result": [{
                 "meta": {"currency": "USD"},
                 "timestamp": [1790352000],
-                "indicators": {"quote": [{"close": [72.88]}],
+                "indicators": {"quote": [{"close": [72.88]}]},
             }]}},
             request=httpx.Request("GET", url),
         )
