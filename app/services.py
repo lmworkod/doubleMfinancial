@@ -16,6 +16,12 @@ class Services:
                 results[symbol] = f"ok:{result.source}"
             else:
                 results[symbol] = f"unavailable:{result.error}"
+        fx = await market_data.fx_usd_per_eur()
+        if fx.value is not None:
+            db.set_metric("fx_usd_per_eur", str(fx.value))
+            db.set_metric("fx_usd_per_eur_as_of", fx.as_of.isoformat() if fx.as_of else "unknown")
+        else:
+            results["FX_USD_EUR"] = f"unavailable:{fx.error}"
         db.set_metric("last_quote_refresh", datetime.now(UTC).isoformat())
         return results
 
