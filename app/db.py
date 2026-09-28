@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -70,7 +70,7 @@ def quote_for(symbol: str) -> Quote | None:
 
 
 def upsert_quote(symbol: str, price: float, source: str) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with SessionLocal.begin() as session:
         item = session.get(Quote, symbol.upper())
         if item is None:
@@ -80,7 +80,7 @@ def upsert_quote(symbol: str, price: float, source: str) -> None:
 
 
 def set_metric(key: str, value: str) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with SessionLocal.begin() as session:
         item = session.get(Metric, key)
         if item is None:
