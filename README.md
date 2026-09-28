@@ -105,3 +105,40 @@ This initial release has no approved historical training dataset or fitted SP500
 ## Operations and security
 
 The bot uses Telegram long polling and needs no public inbound port. The health endpoint listens on localhost only. Credentials live in `/etc/doublemfinancial/doublem.env`, outside the repository, with restricted permissions. The systemd service runs as the unprivileged `doublem` user and logs to journald. Missing or stale data is never interpreted as zero risk.
+
+
+## Risk diagnostics and exit research
+
+`/risk` reports per-position data-quality diagnostics (missing or stale
+quotes) and P/L relative to the manually recorded average cost when available.
+These are descriptive observations, not forecasts or sell recommendations.
+A stale/missing quote raises a data-quality warning; it must never be interpreted
+as a market-risk probability or as an instruction to trade.
+
+### Quantitative roadmap before predictive exit alerts
+
+1. Persist immutable, timestamped daily observations (price, currency, provider,
+   market session and freshness) rather than retaining only the latest quote.
+   Keep corporate actions/adjustments explicit; daily closes and intraday quotes
+   must not be mixed as if they were equivalent.
+2. Build risk features per instrument and for the portfolio: rolling volatility,
+   drawdown, downside semivolatility, concentration, factor/sector exposure,
+   currency sensitivity and correlations. Record missingness and stale-data
+   coverage with every report.
+3. Define separate targets and horizons before fitting anything (for example,
+   market drawdown and volatility events). Fit only on past data and evaluate by
+   chronological walk-forward splits, with an untouched final test period.
+4. Validate probability forecasts with Brier score, log loss and reliability
+   calibration, alongside event precision/recall and base-rate benchmarks.
+   Compare signals against simple baselines and report uncertainty.
+5. Test exit rules on total-return data where possible, including dividends,
+   spreads, fees, FX and realistic execution timing. Report turnover, maximum
+   drawdown, tail loss, time out of market and net results. Avoid look-ahead and
+   survivorship bias; include multiple regimes and stress periods.
+6. Only enable predictive alerts after out-of-sample validation. Show the
+   evidence, horizon, data timestamp, limitations and invalidation conditions.
+   Keep all order execution and portfolio changes under explicit human control.
+
+No fixed indicator threshold or heuristic state in this release is calibrated
+to predict future losses. Market-risk alerts, profit-taking analysis and
+position-specific exit decisions should remain separate concepts.

@@ -1,6 +1,14 @@
+from datetime import UTC, datetime, timedelta
+
 import pandas as pd
 
-from app.risk import logistic_probability, probability_status, risk_features
+from app.risk import (
+    RiskObservation,
+    assess_asset,
+    logistic_probability,
+    probability_status,
+    risk_features,
+)
 
 
 def test_features_leave_short_history_undefined():
@@ -22,3 +30,27 @@ def test_logistic_function_uses_explicit_parameters():
 def test_uncalibrated_model_is_not_misrepresented():
     assert probability_status(False, True) == "not_calibrated"
     assert probability_status(False, False) == "insufficient_data"
+
+
+def test_stale_quote_is_flagged_and_never_called_current():
+    now = datetime(2026, 9, 28, 12, tzinfo=UTC)
+    result = assess_asset(RiskObservation(
+        "SPY", 500.0, "USD", now - timedelta(days=4), "stooq_daily", 450.0
+    ), now)
+    assert result.level == "warning"
+    assert result.pnl_pct == 500 / 450 - 1
+    assert result.findings[0].label == "Cotización antigua"
+
+
+def test_missing_price_is_critical_data_quality_not_sell_signal():
+    result = assess_asset(RiskObservation("QQQ", None, "USD", None, None), datetime.now(UTC))
+    assert result.level == "critical"
+    assert result.findings[0].label == "Precio no disponible"
+
+
+def test_missing_cost_does_not_fabricate_pnl():
+    result = assess_asset(RiskObservation(
+        "IWM", 200.0, "USD", datetime.now(UTC), "provider", None
+    ))
+    assert result.pnl_pct is None
+    assert result.level == "info"
