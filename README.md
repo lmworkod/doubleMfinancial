@@ -1,6 +1,6 @@
 # DoubleM Financial
 
-Telegram-first, self-hosted portfolio and market-risk assistant. Python, PostgreSQL and Docker Compose. No web frontend and no brokerage execution.
+Telegram-first, self-hosted portfolio and market-risk assistant. Python, PostgreSQL and systemd. No web frontend, container runtime, Coolify or brokerage execution is required.
 
 ## Included
 
@@ -8,31 +8,74 @@ Telegram-first, self-hosted portfolio and market-risk assistant. Python, Postgre
 - PostgreSQL persistence for holdings, current quotes and macro metrics.
 - Optional connectors: FRED, Twelve Data and Finnhub. Missing keys or exhausted quota are reported as unavailable.
 - Daily risk-feature foundation. Probabilities remain disabled until a model is trained and validated walk-forward.
-- Docker Compose deployment, persistent database volume and local health endpoint.
+- Native Ubuntu deployment with systemd, SSH-based updates, journald logs and PostgreSQL backups.
+- Docker Compose remains available only as an optional legacy/local deployment; it is not used by the SSH installation.
 - No automated trading, order submission or portfolio rebalancing.
 
-## Configure
+## Deploy on an Ubuntu 24.04 VPS over SSH
 
-Create a bot with [@BotFather](https://t.me/BotFather) and request a free [FRED API key](https://fred.stlouisfed.org/docs/api/api_key.html). Twelve Data and Finnhub keys are optional. Never commit credentials.
+Connect to the VPS as a sudo-capable user. The installer requires root privileges and installs Python, PostgreSQL and Git. It creates a dedicated `doublem` system user, a local PostgreSQL database, a Python virtual environment and a systemd unit. It does not install Coolify, Docker, a web server or expose an inbound port.
 
-Configure these variables in Coolify (or copy `.env.example` to `.env` locally):
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+sudo git clone --branch main https://github.com/lmworkod/doubleMfinancial.git /opt/doublemfinancial
+sudo bash /opt/doublemfinancial/scripts/install-ubuntu.sh
+```
 
-- `TELEGRAM_BOT_TOKEN`: required.
-- `TELEGRAM_ALLOWED_USER_IDS`: numeric Telegram user ID(s), comma-separated. All users are denied when empty.
-- `FRED_API_KEY`: free key for macro.
+Edit the environment file on the VPS (do not commit or share it):
+
+```bash
+sudo nano /etc/doublemfinancial/doublem.env
+```
+
+Set at least:
+- `TELEGRAM_BOT_TOKEN`: token from [@BotFather](https://t.me/BotFather).
+- `TELEGRAM_ALLOWED_USER_IDS`: your numeric Telegram user ID(s), comma-separated. All users are denied when empty.
+- `DATABASE_URL`: keep the local socket URL created by the installer unless you intentionally use another database.
+- `FRED_API_KEY`: optional free key for macro data.
 - `TWELVE_DATA_API_KEY`, `FINNHUB_API_KEY`: optional market sources.
-- `POSTGRES_PASSWORD`: strong, unique password.
 
-Deploy as a Docker Compose resource. Do not upload `.env` to GitHub. PostgreSQL and the health endpoint are not exposed publicly.
+The installer creates the service but does not start it until credentials are configured. Then run:
 
-## Local run
+```bash
+sudo systemctl start doublem
+sudo systemctl status doublem --no-pager
+sudo journalctl -u doublem -n 100 --no-pager
+```
+
+## SSH operations
+
+```bash
+# Follow logs
+sudo journalctl -u doublem -f
+
+# Restart / stop / start
+sudo systemctl restart doublem
+sudo systemctl stop doublem
+sudo systemctl start doublem
+
+# Check service and PostgreSQL
+sudo systemctl is-active doublem
+sudo systemctl is-active postgresql
+
+# Deploy latest main (fast-forward only, installs dependencies and restarts)
+sudo bash /opt/doublemfinancial/scripts/deploy.sh
+
+# Back up PostgreSQL to /var/backups/doublemfinancial
+sudo bash /opt/doublemfinancial/scripts/backup.sh
+```
+
+The deployment script refuses to proceed if the working tree has local modifications and uses `git pull --ff-only`. It does not delete data or perform destructive database migrations. Take a backup before upgrades and test restoration periodically. For a manual rollback, check out a known-good commit and reinstall it before restarting the service.
+
+## Local development
 
 ```bash
 cp .env.example .env
-# Edit .env and set strong credentials
+# Set credentials and a suitable DATABASE_URL
 pip install -e '.[dev]'
+ruff check .
 pytest -q
-docker compose up -d --build
 ```
 
 ## Telegram commands
@@ -47,6 +90,6 @@ Free APIs have changing quotas, market coverage and usage terms. Provider timest
 
 This initial release has no approved historical training dataset or fitted SP500-VRM coefficients. It deliberately reports an uncalibrated model instead of fabricating probabilities. Risk features are a foundation, not an investment signal. No financial action is executed automatically.
 
-## Operations
+## Operations and security
 
-The bot uses Telegram long polling and needs no public inbound port. `/health` listens on container localhost for Docker's healthcheck. Configure external PostgreSQL backups and test restores before relying on the system. Missing or stale data is never interpreted as zero risk.
+The bot uses Telegram long polling and needs no public inbound port. The health endpoint listens on localhost only. Credentials live in `/etc/doublemfinancial/doublem.env`, outside the repository, with restricted permissions. The systemd service runs as the unprivileged `doublem` user and logs to journald. Missing or stale data is never interpreted as zero risk.
