@@ -139,7 +139,58 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if not await authorized(message):
             return
         market, macro = await services.refresh_quotes(), await services.refresh_macro()
-        await message.answer(f"Actualización terminada.\nMercado: {market}\nMacro: {macro}")
+
+        def summarize(results: dict[str, str], *, macro_data: bool = False) -> tuple[int, list[str]]:
+            ok = 0
+            lines = []
+            for symbol, status in results.items():
+                if status == "ok" or status.startswith("ok:"):
+                    ok += 1
+                    source = status.partition(":")[2].replace("_", " ").title()
+                    detail = f" ({source})" if source else ""
+                    lines.append(f"• {symbol}: actualizado{detail}")
+                    continue
+                stale = status.startswith("stale:")
+                if stale:
+                    lines.append(f"• {symbol}: dato anterior conservado (no se obtuvo una actualización nueva)")
+                    continue
+                reason_code = status.partition(":")[2].lower()
+                if "429" in reason_code or "rate_limit" in reason_code or "quota" in reason_code:
+                    reason = "límite de consultas del proveedor"
+                elif "403" in reason_code or "forbidden" in reason_code or "not_entitled" in reason_code:
+                    reason = "el proveedor no permite este acceso"
+                elif "404" in reason_code or "not_found" in reason_code or "symbol_unavailable" in reason_code:
+                    reason = "símbolo no disponible en el proveedor"
+                elif "budget" in reason_code:
+                    reason = "presupuesto diario de consultas agotado"
+                elif "unauthorized" in reason_code:
+                    reason = "credenciales del proveedor no válidas"
+                elif "timeout" in reason_code or "network" in reason_code or "server_error" in reason_code:
+                    reason = "fallo temporal del proveedor"
+                elif "no_eligible_provider" in reason_code or "not_configured" in reason_code:
+                    reason = "no hay proveedor habilitado"
+                else:
+                    reason = "dato no disponible"
+                suffix = " · se conserva el último dato" if stale else ""
+                lines.append(f"• {symbol}: {'sin actualizar' if not stale else 'dato anterior conservado'} ({reason}){suffix}")
+            return ok, lines
+
+        market_ok, market_lines = summarize(market)
+        macro_ok, macro_lines = summarize(macro, macro_data=True)
+        market_failed = len(market) - market_ok
+        macro_failed = len(macro) - macro_ok
+        if market_failed == 0 and macro_failed == 0:
+            heading = "Actualización completada correctamente."
+        elif market_ok + macro_ok:
+            heading = "Actualización completada con incidencias."
+        else:
+            heading = "No se han podido actualizar los datos."
+        parts = [heading, "", f"Mercado: {market_ok}/{len(market)} actualizados"]
+        parts.extend(market_lines)
+        parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
+        parts.extend(macro_lines)
+        parts += ["", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
+        await message.answer("\\n".join(parts))
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:

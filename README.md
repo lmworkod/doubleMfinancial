@@ -6,7 +6,7 @@ Telegram-first, self-hosted portfolio and market-risk assistant. Python, Postgre
 
 - Telegram commands for a manually maintained portfolio, quotes, macro data, refresh and status.
 - PostgreSQL persistence for holdings, current quotes and macro metrics.
-- Optional connectors: FRED, Twelve Data and Finnhub. Missing keys or exhausted quota are reported as unavailable.
+- Optional connectors: FRED, Twelve Data and Finnhub. Provider failures are classified, transient failures receive bounded retries, and previous valid data is retained when a refresh cannot obtain a new value.
 - ISIN-to-listed-symbol mapping for selected UCITS ETFs. Provider coverage is checked at runtime; unknown ISINs are not sent as exchange tickers.
 - Daily risk-feature foundation. Probabilities remain disabled until a model is trained and validated walk-forward.
 - Native Ubuntu deployment with systemd, SSH-based updates, journald logs and PostgreSQL backups.
@@ -89,13 +89,13 @@ Positions are entered manually; there is no broker connection. Valuation include
 
 The database keeps the ISIN as the holding identifier; the market-data layer resolves supported ISINs to provider tickers. The mapping lives in `app/instruments.py`. Provider results are not guaranteed by the presence of a mapping: data coverage, symbol syntax and entitlements depend on each provider. Instruments without a verified mapping remain unavailable instead of being queried under an invalid ticker.
 
-The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1), Global X Copper Miners (IE0003Z9E2Y3), Global X Silver Miners (IE000UL6CLP7), VanEck Space Innovators (IE000YU9K6K2) and WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6). The remaining portfolio instruments are mapped to verified EUR listings: iShares Physical Gold ETC (IE00B4ND3602, PPFB on Xetra) and VanEck Uranium and Nuclear Technologies UCITS ETF (IE000M7V94E1, NUKL on Xetra). Twelve Data and Finnhub use provider-specific symbol formats; actual provider coverage and entitlements are still checked at runtime.
+The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1, GRID), Global X Copper Miners (IE0003Z9E2Y3, COPX), Global X Silver Miners (IE000UL6CLP7, SILV), VanEck Space Innovators (IE000YU9K6K2, JEDI), WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6, RARE), iShares Physical Gold ETC (IE00B4ND3602, PPFB on Xetra) and VanEck Uranium and Nuclear Technologies UCITS ETF (IE000M7V94E1, NUKL on Xetra). Only Twelve Data symbols are configured for these mapped ISINs. Finnhub's ordinary quote endpoint is used only for regular tickers; its documentation states that international real-time stock quotes require Enterprise access. A mapping does not guarantee live coverage or entitlement.
 
 Portfolio market values and P/L are converted to EUR using the latest available ECB USD/EUR reference rate (daily, on working days). EUR quotes need no conversion. If the USD/EUR rate is unavailable, USD-denominated values are omitted from the EUR total rather than treated as EUR. P/L conversion uses the current rate, not the historical exchange rate at purchase, so it is an indicative EUR P/L rather than an exact tax or transaction result.
 
 ## Data and model limits
 
-Free APIs have changing quotas, market coverage and usage terms. Provider timestamps and market entitlements are authoritative; HTTP success alone does not prove data is real-time. The request budget is conservative but process-local.
+Free APIs have changing quotas, market coverage and usage terms. Provider timestamps and market entitlements are authoritative; HTTP success alone does not prove data is real-time. The request budget is conservative but process-local. Refresh retries only transient network, timeout, throttling and server failures a bounded number of times. Authentication, permission and symbol errors are not retried. When a new value cannot be fetched, the last valid value is kept and reported as stale rather than being overwritten.
 
 This initial release has no approved historical training dataset or fitted SP500-VRM coefficients. It deliberately reports an uncalibrated model instead of fabricating probabilities. Risk features are a foundation, not an investment signal. No financial action is executed automatically.
 
