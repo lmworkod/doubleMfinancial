@@ -6,16 +6,16 @@ from app.instruments import INSTRUMENTS, resolve_symbol
 @pytest.mark.parametrize(
     ("isin", "twelve_data", "finnhub"),
     [
-        ("IE000J80JTL1", "GRID", "GRID"),
-        ("IE0003Z9E2Y3", "COPX", "COPX"),
-        ("IE000UL6CLP7", "SILV", "SILV"),
-        ("IE000YU9K6K2", "JEDI", "JEDI"),
-        ("IE000KHX9DX6", "RARE", "RARE"),
-        ("IE00B4ND3602", "PPFB:XETR", "PPFB.DE"),
-        ("IE000M7V94E1", "NUKL:XETR", "NUKL.DE"),
+        ("IE000J80JTL1", "GRID", None),
+        ("IE0003Z9E2Y3", "COPX", None),
+        ("IE000UL6CLP7", "SILV", None),
+        ("IE000YU9K6K2", "JEDI", None),
+        ("IE000KHX9DX6", "RARE", None),
+        ("IE00B4ND3602", "PPFB:XETR", None),
+        ("IE000M7V94E1", "NUKL:XETR", None),
     ],
 )
-def test_known_isin_resolves_to_provider_ticker(isin, twelve_data, finnhub):
+def test_known_isin_resolves_only_verified_provider_symbols(isin, twelve_data, finnhub):
     assert resolve_symbol(isin, "twelve_data") == twelve_data
     assert resolve_symbol(isin, "finnhub") == finnhub
 
