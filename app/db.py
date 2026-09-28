@@ -69,14 +69,14 @@ def quote_for(symbol: str) -> Quote | None:
         return session.get(Quote, symbol.upper())
 
 
-def upsert_quote(symbol: str, price: float, source: str) -> None:
-    now = datetime.now(UTC)
+def upsert_quote(symbol: str, price: float, source: str, observed_at: datetime | None = None) -> None:
+    observed_at = observed_at or datetime.now(UTC)
     with SessionLocal.begin() as session:
         item = session.get(Quote, symbol.upper())
         if item is None:
-            session.add(Quote(symbol=symbol.upper(), price=price, source=source, observed_at=now))
+            session.add(Quote(symbol=symbol.upper(), price=price, source=source, observed_at=observed_at))
         else:
-            item.price, item.source, item.observed_at = price, source, now
+            item.price, item.source, item.observed_at = price, source, observed_at
 
 
 def set_metric(key: str, value: str) -> None:
