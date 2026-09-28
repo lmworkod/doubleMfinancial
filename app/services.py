@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app import db
 from app.config import settings
@@ -16,7 +16,7 @@ class Services:
                 results[symbol] = f"ok:{result.source}"
             else:
                 results[symbol] = f"unavailable:{result.error}"
-        db.set_metric("last_quote_refresh", datetime.now(timezone.utc).isoformat())
+        db.set_metric("last_quote_refresh", datetime.now(UTC).isoformat())
         return results
 
     async def refresh_macro(self) -> dict[str, str]:
@@ -30,5 +30,5 @@ class Services:
             db.set_metric(f"fred_{name}", str(result.value))
             db.set_metric(f"fred_{name}_as_of", result.as_of.isoformat() if result.as_of else "unknown")
             results[name] = "ok"
-        db.set_metric("last_macro_refresh", datetime.now(timezone.utc).isoformat())
+        db.set_metric("last_macro_refresh", datetime.now(UTC).isoformat())
         return results
