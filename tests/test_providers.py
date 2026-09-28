@@ -177,7 +177,7 @@ def test_yahoo_daily_fallback_for_european_etf_checks_currency(monkeypatch):
             json={"chart": {"result": [{
                 "meta": {"currency": "EUR"},
                 "timestamp": [1790352000],
-                "indicators": {"quote": [{"close": [72.88]}],
+                "indicators": {"quote": [{"close": [72.88]}]},
             }]}},
             request=httpx.Request("GET", url),
         )
@@ -236,7 +236,7 @@ def test_yahoo_daily_fallback_supports_gold_eur(monkeypatch):
             json={"chart": {"result": [{
                 "meta": {"currency": "EUR"},
                 "timestamp": [1790352000],
-                "indicators": {"quote": [{"close": [3450.5]}],
+                "indicators": {"quote": [{"close": [3450.5]}]},
             }]}},
             request=httpx.Request("GET", url),
         )
