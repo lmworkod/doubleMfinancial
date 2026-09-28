@@ -17,12 +17,12 @@ class Instrument:
     exchange: str
 
 
-# Prefer EUR listings where confirmed. Provider coverage is still checked at
-# runtime; a syntactically valid ticker does not guarantee API entitlement.
+# Provider coverage is checked at runtime; a ticker does not guarantee
+# availability or API entitlement.
 INSTRUMENTS: dict[str, Instrument] = {
     "IE000J80JTL1": Instrument(
         "IE000J80JTL1", "First Trust Clean Smart Infrastructure UCITS ETF",
-        "GRID", "GRID", "USD", "Borsa Italiana (GRID.MI is not assumed)"
+        "GRID", "GRID", "USD", "Borsa Italiana (GRID.MI not assumed)"
     ),
     "IE0003Z9E2Y3": Instrument(
         "IE0003Z9E2Y3", "Global X Copper Miners UCITS ETF",
@@ -42,25 +42,26 @@ INSTRUMENTS: dict[str, Instrument] = {
     ),
 }
 
-# IE00B4ND3602 and IE000M7V94E1 are intentionally not guessed here:
-# the former is a gold ETC with several listings, while the latter needs
-# its official issuer/listing identifier confirmed before mapping.
+# These identifiers remain unmapped until the exact listing is verified.
 UNMAPPED_ISINS = {"IE00B4ND3602", "IE000M7V94E1"}
 
 
 def resolve_symbol(symbol: str, provider: str) -> str | None:
-    """Return the provider ticker for a known ISIN, or the original ticker.
+    """Resolve a known ISIN to a provider ticker.
 
-    Unknown ISINs are not sent as if they were exchange tickers.
+    Unknown ISINs are not sent as exchange tickers. Regular ticker symbols
+    pass through unchanged.
     """
+    if provider not in {"twelve_data", "finnhub"}:
+        raise ValueError(f"Unknown market-data provider: {provider}")
+
     key = symbol.strip().upper()
     item = INSTRUMENTS.get(key)
     if item is None:
         if key.startswith("IE") and len(key) == 12:
             return None
         return key
+
     if provider == "twelve_data":
         return item.twelve_data_symbol
-    if provider == "finnhub":
-        return item.finnhub_symbol
-    raise ValueError(f"Unknown market-data provider: {provider}")
+    return item.finnhub_symbol
