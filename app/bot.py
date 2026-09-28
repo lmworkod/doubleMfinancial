@@ -139,7 +139,47 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if not await authorized(message):
             return
         market, macro = await services.refresh_quotes(), await services.refresh_macro()
-        await message.answer(f"Actualización terminada.\nMercado: {market}\nMacro: {macro}")
+
+        def summarize(results: dict[str, str]) -> list[str]:
+            lines = []
+            for symbol, status in results.items():
+                if status.startswith("ok:"):
+                    source = status.partition(":")[2].replace("_", " ").title()
+                    lines.append(f"• {symbol}: actualizado ({source})")
+                    continue
+                raw_reason = status.partition(":")[2].lower()
+                if "429" in raw_reason or "quota" in raw_reason or "rate limit" in raw_reason:
+                    reason = "límite de consultas del proveedor"
+                elif "403" in raw_reason or "forbidden" in raw_reason or "unauthorized" in raw_reason:
+                    reason = "proveedor sin autorización o acceso no disponible"
+                elif "404" in raw_reason or "not found" in raw_reason:
+                    reason = "símbolo no disponible en el proveedor"
+                elif "budget" in raw_reason or "presupuesto" in raw_reason:
+                    reason = "presupuesto diario de consultas agotado"
+                elif "not configured" in raw_reason or "no provider configured" in raw_reason:
+                    reason = "ningún proveedor configurado"
+                else:
+                    reason = "cotización no disponible"
+                lines.append(f"• {symbol}: sin actualizar ({reason})")
+            return lines
+
+        market_lines, macro_lines = summarize(market), summarize(macro)
+        market_ok = sum(value.startswith("ok:") for value in market.values())
+        market_failed = len(market) - market_ok
+        macro_ok = sum(value == "ok" for value in macro.values())
+        macro_failed = len(macro) - macro_ok
+        if market_failed == 0 and macro_failed == 0:
+            heading = "Actualización completada correctamente."
+        elif market_ok + macro_ok:
+            heading = "Actualización completada con incidencias."
+        else:
+            heading = "No se han podido actualizar los datos."
+        parts = [heading, "", f"Mercado: {market_ok}/{len(market)} actualizados"]
+        parts.extend(market_lines)
+        parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
+        parts.extend(macro_lines)
+        parts += ["", "Los detalles técnicos se conservan en los registros del servicio."]
+        await message.answer("\n".join(parts))
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:
