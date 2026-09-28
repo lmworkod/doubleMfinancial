@@ -15,14 +15,14 @@ class Services:
         for symbol in symbols:
             result = await market_data.quote(symbol)
             if result.value is not None:
-                db.upsert_quote(symbol, result.value, result.source)
-                results[symbol] = f"ok:{result.source}"
+                db.upsert_quote(symbol, result.value, result.source, result.as_of)
+                results[symbol] = f"ok:{result.source}:{result.as_of.isoformat() if result.as_of else 'unknown'}"
             else:
                 # Preserve the last known quote. Never replace it with zero,
                 # NaN, or a fabricated value when providers are unavailable.
                 previous = db.quote_for(symbol)
                 results[symbol] = (
-                    f"stale:{result.error or 'quote_unavailable'}"
+                    f"stale:{result.error or 'quote_unavailable'}:{previous.observed_at.isoformat() if previous else 'unknown'}"
                     if previous is not None
                     else f"unavailable:{result.error or 'quote_unavailable'}"
                 )
@@ -31,7 +31,7 @@ class Services:
         if fx.value is not None:
             db.set_metric("fx_usd_per_eur", str(fx.value))
             db.set_metric("fx_usd_per_eur_as_of", fx.as_of.isoformat() if fx.as_of else "unknown")
-            results["FX_USD_EUR"] = "ok:ecb"
+            results["FX_USD_EUR"] = f"ok:{fx.source}:{fx.as_of.isoformat() if fx.as_of else 'unknown'}"
         else:
             previous_fx = db.get_metric("fx_usd_per_eur")
             results["FX_USD_EUR"] = (
