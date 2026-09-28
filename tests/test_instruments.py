@@ -11,6 +11,8 @@ from app.instruments import INSTRUMENTS, resolve_symbol
         ("IE000UL6CLP7", "SILV"),
         ("IE000YU9K6K2", "JEDI"),
         ("IE000KHX9DX6", "RARE"),
+        ("IE00B4ND3602", "PPFB:XETR"),
+        ("IE000M7V94E1", "NUKL:XETR"),
     ],
 )
 def test_known_isin_resolves_to_provider_ticker(isin, ticker):
@@ -19,8 +21,8 @@ def test_known_isin_resolves_to_provider_ticker(isin, ticker):
 
 
 def test_unknown_isin_is_not_sent_to_market_provider():
-    assert resolve_symbol("IE00B4ND3602", "twelve_data") is None
-    assert resolve_symbol("IE000M7V94E1", "finnhub") is None
+    assert resolve_symbol("IE00B4ND3602", "twelve_data") == "PPFB:XETR"
+    assert resolve_symbol("IE000M7V94E1", "finnhub") == "NUKL.DE"
 
 
 def test_regular_ticker_passes_through():
