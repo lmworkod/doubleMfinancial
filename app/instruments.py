@@ -40,10 +40,15 @@ INSTRUMENTS: dict[str, Instrument] = {
         "IE000KHX9DX6", "WisdomTree Strategic Metals and Rare Earths Miners UCITS ETF",
         "RARE", "RARE", "USD", "London Stock Exchange"
     ),
+    "IE00B4ND3602": Instrument(
+        "IE00B4ND3602", "iShares Physical Gold ETC",
+        "PPFB:XETR", "PPFB.DE", "EUR", "Xetra"
+    ),
+    "IE000M7V94E1": Instrument(
+        "IE000M7V94E1", "VanEck Uranium and Nuclear Technologies UCITS ETF",
+        "NUKL:XETR", "NUKL.DE", "EUR", "Xetra"
+    ),
 }
-
-# These identifiers remain unmapped until the exact listing is verified.
-UNMAPPED_ISINS = {"IE00B4ND3602", "IE000M7V94E1"}
 
 
 def resolve_symbol(symbol: str, provider: str) -> str | None:

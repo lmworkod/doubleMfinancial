@@ -4,23 +4,25 @@ from app.instruments import INSTRUMENTS, resolve_symbol
 
 
 @pytest.mark.parametrize(
-    ("isin", "ticker"),
+    ("isin", "twelve_data", "finnhub"),
     [
-        ("IE000J80JTL1", "GRID"),
-        ("IE0003Z9E2Y3", "COPX"),
-        ("IE000UL6CLP7", "SILV"),
-        ("IE000YU9K6K2", "JEDI"),
-        ("IE000KHX9DX6", "RARE"),
+        ("IE000J80JTL1", "GRID", "GRID"),
+        ("IE0003Z9E2Y3", "COPX", "COPX"),
+        ("IE000UL6CLP7", "SILV", "SILV"),
+        ("IE000YU9K6K2", "JEDI", "JEDI"),
+        ("IE000KHX9DX6", "RARE", "RARE"),
+        ("IE00B4ND3602", "PPFB:XETR", "PPFB.DE"),
+        ("IE000M7V94E1", "NUKL:XETR", "NUKL.DE"),
     ],
 )
-def test_known_isin_resolves_to_provider_ticker(isin, ticker):
-    assert resolve_symbol(isin, "twelve_data") == ticker
-    assert resolve_symbol(isin, "finnhub") == ticker
+def test_known_isin_resolves_to_provider_ticker(isin, twelve_data, finnhub):
+    assert resolve_symbol(isin, "twelve_data") == twelve_data
+    assert resolve_symbol(isin, "finnhub") == finnhub
 
 
 def test_unknown_isin_is_not_sent_to_market_provider():
-    assert resolve_symbol("IE00B4ND3602", "twelve_data") is None
-    assert resolve_symbol("IE000M7V94E1", "finnhub") is None
+    assert resolve_symbol("IE0000000000", "twelve_data") is None
+    assert resolve_symbol("IE0000000000", "finnhub") is None
 
 
 def test_regular_ticker_passes_through():

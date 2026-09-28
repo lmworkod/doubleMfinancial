@@ -6,6 +6,7 @@ from aiogram.types import Message
 
 from app import db
 from app.config import settings
+from app.fx import quote_currency
 from app.portfolio import portfolio_snapshot
 from app.services import Services
 
@@ -50,11 +51,13 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             if line.price is None:
                 parts.append(f"{line.symbol}: {line.quantity:g} unidades · sin cotización")
             else:
-                pnl = f" · P/L {line.pnl:,.2f}" if line.pnl is not None else ""
-                parts.append(f"{line.symbol}: {line.quantity:g} × {line.price:,.4f} = {line.market_value:,.2f}{pnl}")
-        parts += [f"Valor conocido: {total:,.2f} {settings.default_currency}",
+                value = f" = {line.market_value:,.2f} EUR" if line.market_value is not None else " · valor EUR no disponible"
+                pnl = f" · P/L {line.pnl:,.2f} EUR" if line.pnl is not None else ""
+                parts.append(f"{line.symbol}: {line.quantity:g} × {line.price:,.4f} {line.currency}{value}{pnl}")
+        parts += [f"Valor conocido: {total:,.2f} EUR",
                   f"Cobertura de cotizaciones: {coverage:.0%}",
-                  "No incluye efectivo, conversión de divisa ni comisiones."]
+                  f"FX ECB USD/EUR: {db.get_metric('fx_usd_per_eur').value if db.get_metric('fx_usd_per_eur') else 'no disponible'} (USD por EUR).",
+                  "Valoración en EUR; P/L convertido al tipo actual, no al tipo histórico de compra. No incluye efectivo ni comisiones."]
         await message.answer("\n".join(parts))
 
     @dp.message(Command("add"))
@@ -104,7 +107,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if quote is None:
             await message.answer("No se pudo obtener el precio. Comprueba proveedores y cuotas.")
         else:
-            await message.answer(f"{symbol}: {quote.price:,.4f} {settings.default_currency}\nFuente: {quote.source}\nObservado: {quote.observed_at.isoformat()}")
+            await message.answer(f"{symbol}: {quote.price:,.4f} {quote_currency(symbol, settings.default_currency)}\nFuente: {quote.source}\nObservado: {quote.observed_at.isoformat()}")
 
     @dp.message(Command("watchlist"))
     async def watchlist(message: Message) -> None:

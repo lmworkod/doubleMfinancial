@@ -83,15 +83,15 @@ pytest -q
 
 `/start`, `/help`, `/portfolio`, `/add SYMBOL QUANTITY [AVERAGE_COST]`, `/remove SYMBOL`, `/analyze SYMBOL`, `/watchlist`, `/opportunities`, `/risk`, `/macro`, `/refresh`, `/status`.
 
-Positions are entered manually; there is no broker connection. Valuation includes only positions with a stored quote and excludes cash, FX conversion and fees.
+Positions are entered manually; there is no broker connection. Valuation includes only positions with a stored quote that can be converted to EUR; cash and fees are excluded. USD positions use the latest stored ECB USD-per-EUR reference rate.
 
 ## Instrument mapping
 
 The database keeps the ISIN as the holding identifier; the market-data layer resolves supported ISINs to provider tickers. The mapping lives in `app/instruments.py`. Provider results are not guaranteed by the presence of a mapping: data coverage, symbol syntax and entitlements depend on each provider. Instruments without a verified mapping remain unavailable instead of being queried under an invalid ticker.
 
-The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1), Global X Copper Miners (IE0003Z9E2Y3), Global X Silver Miners (IE000UL6CLP7), VanEck Space Innovators (IE000YU9K6K2) and WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6). Two additional ISINs from the portfolio are deliberately left unmapped until their exact listing is confirmed.
+The current mapping includes First Trust Clean Smart Infrastructure (IE000J80JTL1), Global X Copper Miners (IE0003Z9E2Y3), Global X Silver Miners (IE000UL6CLP7), VanEck Space Innovators (IE000YU9K6K2) and WisdomTree Strategic Metals and Rare Earths Miners (IE000KHX9DX6). The remaining portfolio instruments are mapped to verified EUR listings: iShares Physical Gold ETC (IE00B4ND3602, PPFB on Xetra) and VanEck Uranium and Nuclear Technologies UCITS ETF (IE000M7V94E1, NUKL on Xetra). Twelve Data and Finnhub use provider-specific symbol formats; actual provider coverage and entitlements are still checked at runtime.
 
-The current portfolio valuation does not perform currency conversion. Do not compare or aggregate values in different quote currencies as though they were all EUR.
+Portfolio market values and P/L are converted to EUR using the latest available ECB USD/EUR reference rate (daily, on working days). EUR quotes need no conversion. If the USD/EUR rate is unavailable, USD-denominated values are omitted from the EUR total rather than treated as EUR. P/L conversion uses the current rate, not the historical exchange rate at purchase, so it is an indicative EUR P/L rather than an exact tax or transaction result.
 
 ## Data and model limits
 
