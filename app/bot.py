@@ -143,7 +143,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
 
         def age_label(raw: str) -> str:
             try:
-                observed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                observed = datetime.fromisoformat(raw)
                 if observed.tzinfo is None:
                     observed = observed.replace(tzinfo=UTC)
                 seconds = max(0, int((datetime.now(UTC) - observed.astimezone(UTC)).total_seconds()))
