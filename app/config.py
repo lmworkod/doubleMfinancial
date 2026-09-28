@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     @property
     def symbols(self) -> list[str]:
-        return sorted(set(s.strip().upper() for s in self.watchlist.split(",") if s.strip()))
+        return sorted({s.strip().upper() for s in self.watchlist.split(",") if s.strip()})
 
 
 settings = Settings()
