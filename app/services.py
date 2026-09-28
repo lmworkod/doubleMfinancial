@@ -35,7 +35,7 @@ class Services:
         else:
             previous_fx = db.get_metric("fx_usd_per_eur")
             results["FX_USD_EUR"] = (
-                f"stale:{fx.error or 'rate_unavailable'}"
+                f"stale:{fx.error or 'rate_unavailable'}:{db.get_metric('fx_usd_per_eur_as_of').value if db.get_metric('fx_usd_per_eur_as_of') else 'unknown'}"
                 if previous_fx is not None
                 else f"unavailable:{fx.error or 'rate_unavailable'}"
             )
