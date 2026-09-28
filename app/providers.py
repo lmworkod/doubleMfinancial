@@ -70,6 +70,29 @@ class MarketData:
                 errors.append(f"Finnhub: {exc}")
         return ProviderResult(None, "none", None, "; ".join(errors) or "No provider configured or budget exhausted")
 
+    async def fx_usd_per_eur(self) -> ProviderResult:
+        """Fetch the latest ECB daily reference rate (USD per EUR)."""
+        if not self.budget.consume():
+            return ProviderResult(None, "ecb", None, "Daily request budget exhausted")
+        try:
+            response = await self.client.get(
+                "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A",
+                params={"lastNObservations": 1, "format": "csvdata"},
+                headers={"Accept": "text/csv"},
+            )
+            response.raise_for_status()
+            import csv
+            from io import StringIO
+
+            rows = list(csv.DictReader(StringIO(response.text)))
+            if not rows or not rows[-1].get("OBS_VALUE"):
+                return ProviderResult(None, "ecb", None, "No ECB USD/EUR observation")
+            row = rows[-1]
+            observed = datetime.fromisoformat(row["TIME_PERIOD"]).replace(tzinfo=UTC)
+            return ProviderResult(float(row["OBS_VALUE"]), "ecb", observed)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            return ProviderResult(None, "ecb", None, str(exc))
+
     async def fred_latest(self, series_id: str) -> ProviderResult:
         if not settings.fred_api_key:
             return ProviderResult(None, "fred", None, "FRED_API_KEY not configured")
