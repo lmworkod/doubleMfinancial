@@ -1,4 +1,6 @@
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -17,8 +19,7 @@ def test_daily_budget_has_explicit_limit():
     assert not budget.consume()
 
 
-@pytest.mark.asyncio
-async def test_quote_uses_twelve_data_quote_endpoint_and_validates_price(monkeypatch):
+def test_quote_uses_twelve_data_quote_endpoint_and_validates_price(monkeypatch):
     from app import providers
 
     monkeypatch.setattr(providers.settings, "twelve_data_api_key", "test-key")
@@ -31,16 +32,20 @@ async def test_quote_uses_twelve_data_quote_endpoint_and_validates_price(monkeyp
         return httpx.Response(200, json={"close": "24.1", "symbol": "SPY"})
 
     service.client.get = get
-    result = await service.quote("SPY")
-    await service.close()
+    async def run():
+        try:
+            return await service.quote("SPY")
+        finally:
+            await service.close()
+
+    result = asyncio.run(run())
 
     assert result.value == 24.1
     assert result.source == "twelve_data"
     assert calls[0][0].endswith("/quote")
 
 
-@pytest.mark.asyncio
-async def test_quote_does_not_try_finnhub_for_known_european_isin(monkeypatch):
+def test_quote_does_not_try_finnhub_for_known_european_isin(monkeypatch):
     from app import providers
 
     monkeypatch.setattr(providers.settings, "twelve_data_api_key", "")
@@ -53,15 +58,19 @@ async def test_quote_does_not_try_finnhub_for_known_european_isin(monkeypatch):
         return httpx.Response(403, request=httpx.Request("GET", url))
 
     service.client.get = get
-    result = await service.quote("IE000M7V94E1")
-    await service.close()
+    async def run():
+        try:
+            return await service.quote("IE000M7V94E1")
+        finally:
+            await service.close()
+
+    result = asyncio.run(run())
 
     assert result.value is None
     assert calls == []
 
 
-@pytest.mark.asyncio
-async def test_quote_does_not_leak_request_url_on_http_error(monkeypatch):
+def test_quote_does_not_leak_request_url_on_http_error(monkeypatch):
     from app import providers
 
     monkeypatch.setattr(providers.settings, "twelve_data_api_key", "secret-value")
@@ -74,8 +83,13 @@ async def test_quote_does_not_leak_request_url_on_http_error(monkeypatch):
         return httpx.Response(404, request=request)
 
     service.client.get = get
-    result = await service.quote("SPY")
-    await service.close()
+    async def run():
+        try:
+            return await service.quote("SPY")
+        finally:
+            await service.close()
+
+    result = asyncio.run(run())
 
     assert result.value is None
     assert "404" not in (result.error or "")
