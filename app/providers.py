@@ -155,8 +155,11 @@ class MarketData:
                 continue
 
             if provider == "twelve_data":
-                raw = payload.get("close") or payload.get("price")
-                price = _positive_price(raw)
+                # /quote exposes close and provider metadata. A positive
+                # close is the best available field for the latest session.
+                # If close is absent, never silently present an unrelated
+                # last-trade value as a confirmed quote.
+                price = _positive_price(payload.get("close"))
                 if price is None:
                     api_status = str(payload.get("status", "")).lower()
                     message = str(payload.get("message", "")).lower()
