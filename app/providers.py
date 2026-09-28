@@ -9,7 +9,7 @@ from io import StringIO
 import httpx
 
 from app.config import settings
-from app.instruments import resolve_exchange, resolve_symbol
+from app.instruments import INSTRUMENTS, resolve_exchange, resolve_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +176,35 @@ class MarketData:
             pass
         return ProviderResult(None, "stooq", None, "no_valid_observation")
 
+    async def _yahoo_daily_quote(self, symbol: str) -> ProviderResult:
+        """Best-effort daily close; not an official/licensed market-data API."""
+        key = symbol.strip().upper()
+        ticker = YAHOO_SYMBOLS.get(key)
+        if not ticker:
+            return ProviderResult(None, "yahoo_chart", None, "symbol_not_configured")
+        payload, error = await self._get_json(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
+            {"range": "5d", "interval": "1d", "events": "div,splits"},
+            "yahoo_chart",
+        )
+        if error:
+            return ProviderResult(None, "yahoo_chart", None, error)
+        try:
+            result = payload["chart"]["result"][0]
+            currency = str(result["meta"].get("currency", "")).upper()
+            expected = INSTRUMENTS[key].quote_currency if key in INSTRUMENTS else "EUR"
+            if currency != expected:
+                return ProviderResult(None, "yahoo_chart", None, "currency_mismatch")
+            timestamps = result.get("timestamp") or []
+            closes = result["indicators"]["quote"][0].get("close") or []
+            for timestamp, close in reversed(list(zip(timestamps, closes))):
+                price = _positive_price(close)
+                if isinstance(timestamp, (int, float)) and timestamp > 0 and price is not None:
+                    return ProviderResult(price, "yahoo_daily", datetime.fromtimestamp(timestamp, UTC))
+        except (KeyError, IndexError, TypeError, ValueError):
+            pass
+        return ProviderResult(None, "yahoo_chart", None, "no_valid_observation")
+
     async def quote(self, symbol: str) -> ProviderResult:
         errors: list[str] = []
         twelve_symbol = resolve_symbol(symbol, "twelve_data")
@@ -248,8 +277,11 @@ class MarketData:
         if stooq.error and stooq.error != "symbol_not_configured":
             errors.append(f"stooq:{stooq.error}")
 
-        # For mapped European instruments do not guess symbols in third-party
-        # data sources. Their exact listing and currency must be confirmed.
+        yahoo = await self._yahoo_daily_quote(symbol)
+        if yahoo.value is not None:
+            return yahoo
+        if yahoo.error and yahoo.error != "symbol_not_configured":
+            errors.append(f"yahoo:{yahoo.error}")
         return ProviderResult(None, "none", None, "; ".join(errors) or "quote_unavailable")
 
     async def fx_usd_per_eur(self) -> ProviderResult:
@@ -325,6 +357,18 @@ def _parse_provider_datetime(value: object) -> datetime | None:
 
 
 # Explicit allowlist: no inferred or user-controlled Stooq ticker construction.
+YAHOO_SYMBOLS = {
+    "IE000J80JTL1": "GRID.MI",
+    "IE0003Z9E2Y3": "COPX.L",
+    "IE000UL6CLP7": "SILV.L",
+    "IE000YU9K6K2": "JEDI.L",
+    "IE000KHX9DX6": "RARE.L",
+    "IE00B4ND3602": "PPFB.DE",
+    "IE000M7V94E1": "NUKL.DE",
+    "XAU-EUR": "XAUEUR=X",
+}
+
+
 STOOQ_SYMBOLS = {
     "SPY": "spy.us",
     "QQQ": "qqq.us",
