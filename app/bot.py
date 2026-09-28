@@ -162,7 +162,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             ("Este informe evalúa la disponibilidad de datos y el P/L registrado, no predice pérdidas "
              "ni constituye una señal de compra o venta."),
         ])
-        await message.answer("\\n".join(parts))
+        await message.answer("\n".join(parts))
 
     @dp.message(Command("macro"))
     async def macro(message: Message) -> None:
