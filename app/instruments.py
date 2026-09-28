@@ -50,9 +50,6 @@ INSTRUMENTS: dict[str, Instrument] = {
     ),
 }
 
-# These identifiers remain unmapped until the exact listing is verified.
-UNMAPPED_ISINS = {"IE00B4ND3602", "IE000M7V94E1"}
-
 
 def resolve_symbol(symbol: str, provider: str) -> str | None:
     """Resolve a known ISIN to a provider ticker.
