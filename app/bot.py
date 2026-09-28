@@ -7,6 +7,7 @@ from aiogram.types import Message
 from app import db
 from app.config import settings
 from app.portfolio import portfolio_snapshot
+from app.fx import quote_currency
 from app.services import Services
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                 value = f" = {line.market_value:,.2f} EUR" if line.market_value is not None else " · valor EUR no disponible"
                 pnl = f" · P/L {line.pnl:,.2f} EUR" if line.pnl is not None else ""
                 parts.append(f"{line.symbol}: {line.quantity:g} × {line.price:,.4f} {line.currency}{value}{pnl}")
-        parts += [f"Valor conocido: {total:,.2f} {settings.default_currency}",
+        parts += [f"Valor conocido: {total:,.2f} EUR",
                   f"Cobertura de cotizaciones: {coverage:.0%}",
                   f"FX ECB USD/EUR: {db.get_metric('fx_usd_per_eur').value if db.get_metric('fx_usd_per_eur') else 'no disponible'} (USD por EUR).",
                   "Valoración en EUR; P/L convertido al tipo actual, no al tipo histórico de compra. No incluye efectivo ni comisiones."]
