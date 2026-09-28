@@ -102,7 +102,8 @@ def test_stooq_not_used_for_unknown_or_isin_symbol(monkeypatch):
     result = asyncio.run(run())
 
     assert result.value is None
-    assert calls == []
+    assert calls == ["https://query1.finance.yahoo.com/v8/finance/chart/NUKL.DE"]
+    assert all("stooq.com" not in url for url in calls)
 
 
 def test_fx_uses_frankfurter_when_ecb_unavailable(monkeypatch):
