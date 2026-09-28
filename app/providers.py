@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.config import settings
-from app.instruments import resolve_symbol
+from app.instruments import resolve_exchange, resolve_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,9 @@ class MarketData:
 
         for provider, ticker, url in providers:
             params = {"symbol": ticker}
+            exchange = resolve_exchange(symbol, provider)
+            if exchange:
+                params["exchange"] = exchange
             params["apikey" if provider == "twelve_data" else "token"] = (
                 settings.twelve_data_api_key if provider == "twelve_data"
                 else settings.finnhub_api_key
@@ -155,10 +158,15 @@ class MarketData:
                 continue
 
             if provider == "twelve_data":
-                # /quote exposes close and provider metadata. A positive
-                # close is the best available field for the latest session.
-                # If close is absent, never silently present an unrelated
-                # last-trade value as a confirmed quote.
+                # /quote exposes close and provider metadata. Require its
+                # returned exchange to agree with the requested listing when
+                # both are present, and don't silently use another venue.
+                returned_exchange = str(payload.get("mic_code") or "").upper()
+                expected_exchange = (exchange or "").upper()
+                if expected_exchange and returned_exchange and returned_exchange != expected_exchange:
+                    errors.append(f"{provider}:exchange_mismatch")
+                    logger.warning("%s returned a different exchange for %s", provider, symbol)
+                    continue
                 price = _positive_price(payload.get("close"))
                 if price is None:
                     api_status = str(payload.get("status", "")).lower()
