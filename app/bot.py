@@ -6,8 +6,8 @@ from aiogram.types import Message
 
 from app import db
 from app.config import settings
-from app.portfolio import portfolio_snapshot
 from app.fx import quote_currency
+from app.portfolio import portfolio_snapshot
 from app.services import Services
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if quote is None:
             await message.answer("No se pudo obtener el precio. Comprueba proveedores y cuotas.")
         else:
-            await message.answer(f"{symbol}: {quote.price:,.4f} {settings.default_currency}\nFuente: {quote.source}\nObservado: {quote.observed_at.isoformat()}")
+            await message.answer(f"{symbol}: {quote.price:,.4f} {quote_currency(symbol, settings.default_currency)}\nFuente: {quote.source}\nObservado: {quote.observed_at.isoformat()}")
 
     @dp.message(Command("watchlist"))
     async def watchlist(message: Message) -> None:
