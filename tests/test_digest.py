@@ -61,15 +61,25 @@ def test_digest_marks_flat_and_loss_positions(monkeypatch):
 
 def test_macro_digest_formats_age_and_trends(monkeypatch):
     from app import digest
+
     now = datetime(2026, 9, 28, 21, tzinfo=UTC)
+
     def metric(key):
         if key == "fred_fed_funds":
             return SimpleNamespace(value="3.5", observed_at=now - timedelta(hours=2))
+        if key == "fred_fed_funds_as_of":
+            return SimpleNamespace(value=(now - timedelta(hours=2)).isoformat())
         return None
+
     monkeypatch.setattr(digest.db, "get_metric", metric)
-    monkeypatch.setattr(digest.db, "metric_history_at_or_before",
-                        lambda key, cutoff: SimpleNamespace(value=3.0) if key == "fred_fed_funds" else None)
+    monkeypatch.setattr(
+        digest.db,
+        "metric_history_at_or_before",
+        lambda key, cutoff: SimpleNamespace(value=3.0)
+        if key == "fred_fed_funds" else None,
+    )
     result = digest._macro_line("fed_funds", "Fed Funds", now, (7, 30, 365))
     assert "actualizado hace 2 h" in result
     assert "WoW: +16.67%" in result
-    assert "MoM: —" in result
+    assert "MoM: +16.67%" in result
+    assert "YoY: +16.67%" in result
