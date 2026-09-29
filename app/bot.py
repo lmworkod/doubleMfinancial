@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from html import escape
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command, CommandStart
@@ -32,12 +33,12 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
     @dp.message(CommandStart())
     async def start(message: Message) -> None:
         if await authorized(message):
-            await message.answer("DoubleM Financial listo. Usa /help para ver los comandos.")
+            await message.answer("📊 <b>DOUBLEM FINANCIAL</b>\n\n🟢 Bot operativo. Usa /help para consultar los comandos.", parse_mode="HTML")
 
     @dp.message(Command("help"))
     async def help_cmd(message: Message) -> None:
         if await authorized(message):
-            await message.answer("/portfolio · /add SYMBOL QUANTITY [COSTE] · /remove SYMBOL\n/analyze SYMBOL · /watchlist · /opportunities\n/risk · /macro · /refresh · /status")
+            await message.answer("<b>📊 CARTERA</b>\n/portfolio — Valoración y P/L\n/add SYMBOL CANTIDAD [COSTE] — Añadir posición\n/remove SYMBOL — Eliminar posición\n\n<b>🔎 ANÁLISIS</b>\n/analyze SYMBOL — Cotización\n/watchlist — Universo observado\n/opportunities — Oportunidades\n/risk — Calidad de datos\n/macro — Indicadores macro\n\n<b>⚙️ SISTEMA</b>\n/refresh — Actualizar datos\n/status — Estado del bot", parse_mode="HTML")
 
     @dp.message(Command("portfolio"))
     async def portfolio(message: Message) -> None:
@@ -47,7 +48,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if not lines:
             await message.answer("Cartera vacía. Ejemplo: /add SPY 2 500")
             return
-        parts = ["Cartera (valoración indicativa)"]
+        parts = ["💼 <b>CARTERA</b> · Valoración indicativa", ""]
         for line in lines:
             if line.price is None:
                 parts.append(f"{line.symbol}: {line.quantity:g} unidades · sin cotización")
@@ -59,7 +60,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                   f"Cobertura de cotizaciones: {coverage:.0%}",
                   f"FX ECB USD/EUR: {db.get_metric('fx_usd_per_eur').value if db.get_metric('fx_usd_per_eur') else 'no disponible'} (USD por EUR).",
                   "Valoración en EUR; P/L convertido al tipo actual, no al tipo histórico de compra. No incluye efectivo ni comisiones."]
-        await message.answer("\n".join(parts))
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("add"))
     async def add(message: Message) -> None:
@@ -147,32 +148,32 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         report = portfolio_risk_report(observations)
         labels = {"critical": "CRÍTICO · CALIDAD DE DATOS", "warning": "REVISAR · CALIDAD DE DATOS",
                   "info": "SIN INCIDENCIAS OBSERVABLES"}
-        parts = ["Diagnóstico de riesgo · cartera", ""]
+        parts = ["🛡️ <b>DIAGNÓSTICO DE RIESGO</b> · CARTERA", ""]
         for item in report:
-            parts.append(f"• {item.symbol}: {labels[item.level]}")
+            parts.append(f"• <b>{escape(item.symbol)}</b>: {labels[item.level]}")
             if item.price_age_hours is not None:
                 parts.append(f"  Antigüedad de cotización: {item.price_age_hours:.1f} h")
             if item.pnl_pct is not None:
                 parts.append(f"  P/L vs. coste medio registrado: {item.pnl_pct:+.2%}")
             for finding in item.findings:
-                parts.append(f"  - {finding.label}: {finding.detail}")
+                parts.append(f"  - {escape(finding.label)}: {escape(finding.detail)}")
         parts.extend([
             "",
             "SP500-VRM: probabilidades no calibradas; no se estima una probabilidad de caída.",
             ("Este informe evalúa la disponibilidad de datos y el P/L registrado, no predice pérdidas "
              "ni constituye una señal de compra o venta."),
         ])
-        await message.answer("\n".join(parts))
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("macro"))
     async def macro(message: Message) -> None:
         if not await authorized(message):
             return
-        parts = ["Variables macro almacenadas"]
+        parts = ["🌐 <b>INDICADORES MACRO</b>", ""]
         for key in ("fed_funds", "ust10y", "usd_broad"):
             metric, asof = db.get_metric(f"fred_{key}"), db.get_metric(f"fred_{key}_as_of")
-            parts.append(f"{key}: {metric.value if metric else 'sin dato'} (fecha: {asof.value if asof else '—'})")
-        await message.answer("\n".join(parts))
+            parts.append(f"• <b>{key.replace('_', ' ').upper()}</b> · {escape(str(metric.value if metric else 'sin dato'))} · Observado: {escape(str(asof.value if asof else '—'))}")
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("refresh"))
     async def refresh(message: Message) -> None:
@@ -206,13 +207,13 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                     source = fields[1].replace("_", " ").title() if len(fields) > 1 else ""
                     detail = f" ({source})" if source else ""
                     age = age_label(fields[2]) if len(fields) > 2 else ""
-                    lines.append(f"• {symbol}: actualizado{detail}{age}")
+                    lines.append(f"🟢 <b>{escape(symbol)}</b> · actualizado{escape(detail)}{escape(age)}")
                     continue
                 stale = status.startswith("stale:")
                 if stale:
                     fields = status.split(":", 2)
                     age = age_label(fields[2]) if len(fields) > 2 else ""
-                    lines.append(f"• {symbol}: dato anterior conservado (no se obtuvo una actualización nueva){age}")
+                    lines.append(f"🟠 <b>{escape(symbol)}</b> · dato anterior conservado{escape(age)}")
                     continue
                 reason_code = status.partition(":")[2].lower()
                 if "429" in reason_code or "rate_limit" in reason_code or "quota" in reason_code:
@@ -232,7 +233,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                 else:
                     reason = "dato no disponible"
                 suffix = " · se conserva el último dato" if stale else ""
-                lines.append(f"• {symbol}: {'sin actualizar' if not stale else 'dato anterior conservado'} ({reason}){suffix}")
+                lines.append(f"🔴 <b>{escape(symbol)}</b> · {'sin actualizar' if not stale else 'dato anterior conservado'} ({reason}){suffix}")
             return ok, lines
 
         market_ok, market_lines = summarize(market)
@@ -245,18 +246,18 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             heading = "Actualización completada con incidencias."
         else:
             heading = "No se han podido actualizar los datos."
-        parts = [heading, "", f"Mercado: {market_ok}/{len(market)} actualizados"]
+        parts = [f"<b>{'🟢' if market_failed == 0 and macro_failed == 0 else '🟠' if market_ok + macro_ok else '🔴'} {heading}</b>", "", f"📈 <b>MERCADO</b> · {market_ok}/{len(market)} actualizados"]
         parts.extend(market_lines)
-        parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
+        parts += ["", f"🌐 <b>MACROECONOMÍA</b> · {macro_ok}/{len(macro)} actualizados"]
         parts.extend(macro_lines)
         parts += ["", "La antigüedad se calcula desde la observación del proveedor, no desde la última consulta. Los cierres diarios pueden corresponder al último día hábil.", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
-        await message.answer("\n".join(parts))
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:
         if not await authorized(message):
             return
         quote_time, macro_time = db.get_metric("last_quote_refresh"), db.get_metric("last_macro_refresh")
-        await message.answer(f"Bot y base de datos activos.\nMercado: {quote_time.value if quote_time else 'pendiente'}\nMacro: {macro_time.value if macro_time else 'pendiente'}\nClaves: FRED={'sí' if settings.fred_api_key else 'no'}, Twelve Data={'sí' if settings.twelve_data_api_key else 'no'}, Finnhub={'sí' if settings.finnhub_api_key else 'no'}")
+        await message.answer(f"🟢 <b>ESTADO DEL SISTEMA</b>\n\n📈 <b>Mercado</b> · {escape(str(quote_time.value if quote_time else 'pendiente'))}\n🌐 <b>Macro</b> · {escape(str(macro_time.value if macro_time else 'pendiente'))}\n\n<b>Proveedores configurados</b>\nFRED {'🟢' if settings.fred_api_key else '⚪'} · Twelve Data {'🟢' if settings.twelve_data_api_key else '⚪'} · Finnhub {'🟢' if settings.finnhub_api_key else '⚪'}", parse_mode="HTML")
 
     return bot, dp

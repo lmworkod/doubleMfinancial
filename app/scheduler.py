@@ -22,7 +22,7 @@ def start_scheduler(services: Services, bot: Bot) -> AsyncIOScheduler:
         await services.refresh_macro()
         digest = build_daily_digest()
         for user_id in sorted(settings.allowed_user_ids):
-            await bot.send_message(user_id, digest)
+            await bot.send_message(user_id, digest, parse_mode="HTML")
 
     scheduler.add_job(send_daily_digest, "cron", day_of_week="mon-fri", hour=23,
         minute=0, timezone="Europe/Madrid", id="daily_portfolio_digest",

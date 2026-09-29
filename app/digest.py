@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from html import escape
 
 from app import db
 from app.portfolio import holdings_fingerprint, portfolio_snapshot
@@ -85,23 +86,23 @@ def build_daily_digest(now: datetime | None = None) -> str:
     now = now or datetime.now(UTC)
     now_utc = _aware(now)
     lines: list[str] = [
-        f"📊 DoubleM Financial · Resumen diario ({now.astimezone().strftime('%d/%m/%Y')})"
+        f"📊 <b>DOUBLEM FINANCIAL</b> · RESUMEN DIARIO\n{now.astimezone().strftime('%d/%m/%Y')}"
     ]
     items, total, coverage = portfolio_snapshot()
     if not items:
-        lines.extend(["", "Inventario: no hay posiciones registradas."])
+        lines.extend(["", "💼 <b>CARTERA</b>", "Inventario: no hay posiciones registradas."])
     else:
-        lines.extend(["", f"💼 Valor conocido: {total:,.2f} EUR",
-                      f"Cobertura de valoración: {coverage:.0%}"])
+        lines.extend(["", "💼 <b>CARTERA</b>", f"Valor conocido: {total:,.2f} EUR",
+                      f"Cobertura · <b>{coverage:.0%}</b>"])
         fingerprint = holdings_fingerprint(items)
         lines.extend([
-            f"P/L del día: {_pnl_since(total, now_utc - timedelta(days=1), fingerprint, now_utc)}",
-            f"P/L acumulado de la semana: {_pnl_since(total, now_utc - timedelta(days=7), fingerprint, now_utc)}",
-            "", "📦 Inventario"
+            f"🗓️ P/L del día: {_pnl_since(total, now_utc - timedelta(days=1), fingerprint, now_utc)}",
+            f"📅 P/L acumulado de la semana: {_pnl_since(total, now_utc - timedelta(days=7), fingerprint, now_utc)}",
+            "", "📦 <b>POSICIONES</b>"
         ])
         for item in items:
             if item.price is None:
-                lines.append(f"• ⚪ {item.symbol}: {item.quantity:g} uds. · sin cotización")
+                lines.append(f"⚪ {escape(item.symbol)}: {item.quantity:g} uds. · sin cotización")
                 continue
             value = f"{item.market_value:,.2f} EUR" if item.market_value is not None else "valor EUR no disponible"
             if item.pnl is None or abs(item.pnl) < 0.005:
@@ -111,10 +112,10 @@ def build_daily_digest(now: datetime | None = None) -> str:
             else:
                 arrow = "🔴⬇️"
             pnl = f" · P/L desde coste: {item.pnl:+,.2f} EUR" if item.pnl is not None else ""
-            lines.append(f"• {arrow} {item.symbol}: {item.quantity:g} × {item.price:,.4f} {item.currency} · {value}{pnl}")
+            lines.append(f"{arrow} {escape(item.symbol)}: {item.quantity:g} × {item.price:,.4f} {escape(item.currency)} · {value}{pnl}")
     if items and coverage == 1.0:
         db.record_portfolio_snapshot(total, coverage, holdings_fingerprint(items), now_utc)
-    lines.extend(["", "🌐 Datos macro"])
+    lines.extend(["", "🌐 <b>MACRO Y DIVISA</b>"])
     for key, label in (("fed_funds", "Fed Funds"), ("ust10y", "Treasury 10Y"),
                        ("usd_broad", "USD broad")):
         lines.append(_macro_line(key, label, now_utc, (7, 30, 365)))
@@ -122,8 +123,9 @@ def build_daily_digest(now: datetime | None = None) -> str:
     market_refresh, macro_refresh = db.get_metric("last_quote_refresh"), db.get_metric("last_macro_refresh")
     market_at = _parse_datetime(market_refresh.value if market_refresh else None)
     macro_at = _parse_datetime(macro_refresh.value if macro_refresh else None)
-    lines.extend(["", "🕒 Últimas consultas",
-                  f"• Mercado: {human_age(market_at, now_utc)}",
-                  f"• Macro: {human_age(macro_at, now_utc)}",
-                  "", "Los cierres diarios pueden corresponder al último día hábil. Las cotizaciones fallidas conservan el último valor válido; comprueba su antigüedad antes de interpretar la valoración. El P/L usa el tipo FX actual, no el histórico. No incluye efectivo ni comisiones. El SP500-VRM permanece sin probabilidades operativas hasta completar calibración y validación fuera de muestra."])
+    lines.extend(["", "🕒 <b>ÚLTIMA ACTUALIZACIÓN</b>",
+                  f"• Mercado · {human_age(market_at, now_utc)}",
+                  f"• Macro · {human_age(macro_at, now_utc)}",
+                  "", "<i>Los cierres pueden corresponder al último día hábil. Las cotizaciones fallidas conservan el último valor válido; revisa su antigüedad. P/L al FX actual; sin efectivo ni comisiones.</i>",
+                  "SP500-VRM permanece sin probabilidades operativas: calibración pendiente."])
     return "\n".join(lines)
