@@ -169,6 +169,14 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                 source=quote.source if quote else None,
                 average_cost=holding.average_cost,
             ))
+        history_by_symbol = {}
+        for holding in holdings:
+            try:
+                rows, _ = await services.daily_history(holding.symbol, outputsize=8)
+                history_by_symbol[holding.symbol] = rows
+            except Exception:
+                logger.exception("Could not refresh risk history for %s", holding.symbol)
+                history_by_symbol[holding.symbol] = []
         report = portfolio_risk_report(observations)
         labels = {"critical": "CRÍTICO · CALIDAD DE DATOS", "warning": "REVISAR · CALIDAD DE DATOS",
                   "info": "SIN INCIDENCIAS OBSERVABLES"}
@@ -179,6 +187,13 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                 parts.append(f"  Antigüedad de cotización: {item.price_age_hours:.1f} h")
             if item.pnl_pct is not None:
                 parts.append(f"  P/L vs. coste medio registrado: {item.pnl_pct:+.2%}")
+            history = history_by_symbol.get(item.symbol, [])
+            parts.append(f"  Histórico diario: {len(history)} sesiones disponibles")
+            if len(history) >= 8:
+                change = history[-1][1] / history[-8][1] - 1
+                parts.append(f"  Variación en 7 intervalos: {change:+.2%}")
+            else:
+                parts.append("  Variación en 7 intervalos: insuficiente histórico")
             for finding in item.findings:
                 parts.append(f"  - {escape(finding.label)}: {escape(finding.detail)}")
         parts.extend([

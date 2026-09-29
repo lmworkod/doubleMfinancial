@@ -32,6 +32,12 @@ def test_quote_uses_twelve_data_quote_endpoint_and_validates_price(monkeypatch):
 
     async def get(url, params):
         calls.append((url, params))
+        if "query1.finance.yahoo.com" in url:
+            return httpx.Response(200, json={"chart": {"result": [{
+                "meta": {"symbol": "SPY", "currency": "USD"},
+                "timestamp": [1790352000],
+                "indicators": {"quote": [{"close": [24.1]}]},
+            }]}})
         return httpx.Response(200, json={"close": "24.1", "symbol": "SPY"})
 
     service.client.get = get
@@ -44,9 +50,9 @@ def test_quote_uses_twelve_data_quote_endpoint_and_validates_price(monkeypatch):
     result = asyncio.run(run())
 
     assert result.value == 24.1
-    assert result.source == "twelve_data"
-    assert calls[0][0].endswith("/quote")
-    assert calls[0][1]["symbol"] == "SPY"
+    assert result.source == "yahoo_daily"
+    assert "query1.finance.yahoo.com" in calls[0][0]
+    assert calls[0][1]["range"] == "5d"
 
 
 def test_quote_falls_back_to_stooq_daily_close(monkeypatch):
@@ -77,7 +83,7 @@ def test_quote_falls_back_to_stooq_daily_close(monkeypatch):
     assert result.value == 100.25
     assert result.source == "stooq_daily"
     assert result.as_of.isoformat() == "2026-09-25T00:00:00+00:00"
-    assert calls[0][1] == {"s": "spy.us", "i": "d"}
+    assert calls[-1][1] == {"s": "spy.us", "i": "d"}
 
 
 def test_stooq_not_used_for_unknown_or_isin_symbol(monkeypatch):
@@ -248,3 +254,34 @@ def test_yahoo_daily_fallback_supports_gold_eur(monkeypatch):
     assert result.value == 3450.5
     assert result.source == "yahoo_daily"
     assert "XAUEUR=X" in calls[0]
+
+
+def test_daily_history_prefers_yahoo_and_returns_eight_sessions(monkeypatch):
+    from app import providers
+
+    monkeypatch.setattr(providers.settings, "twelve_data_api_key", "test-key")
+    service = MarketData()
+    calls = []
+
+    async def get(url, params):
+        calls.append(url)
+        return httpx.Response(200, json={"chart": {"result": [{
+            "meta": {"symbol": "SPY", "currency": "USD"},
+            "timestamp": [1790000000 + i * 86400 for i in range(12)],
+            "indicators": {"quote": [{"close": [100 + i for i in range(12)]}]},
+        }]}})
+
+    service.client.get = get
+
+    async def run():
+        try:
+            return await service.daily_history("SPY", outputsize=8)
+        finally:
+            await service.close()
+
+    rows, error = asyncio.run(run())
+    assert error is None
+    assert len(rows) == 8
+    assert rows[-1][1] == 111
+    assert len(calls) == 1
+    assert "query1.finance.yahoo.com" in calls[0]
