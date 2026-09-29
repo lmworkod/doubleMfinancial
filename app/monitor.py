@@ -3,8 +3,11 @@
 Alerts describe observed price moves only. They are not trading instructions.
 """
 from html import escape
+import logging
 
 from app import db
+
+logger = logging.getLogger(__name__)
 
 MARKET_PROXIES = ("SPY", "QQQ", "TLT", "GLD")
 HOLDING_MOVE_THRESHOLD = 0.05
@@ -48,13 +51,13 @@ async def scan_portfolio_signal_changes(services=None) -> list[str]:
             if alert:
                 alerts.append(alert)
         except Exception:
-            # A single malformed/missing quote must not abort the full scan.
-            continue
+            # Keep scanning other positions if one quote or database read fails.
+            logger.exception("Could not monitor holding %s", holding.symbol)
     for symbol in MARKET_PROXIES:
         try:
             alert = _observe(symbol, MARKET_MOVE_THRESHOLD, "mercado")
             if alert:
                 alerts.append(alert)
         except Exception:
-            continue
+            logger.exception("Could not monitor market proxy %s", symbol)
     return alerts
