@@ -8,12 +8,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
+import logging
 
 import numpy as np
 
 from app import db
 from app.config import settings
 from app.instruments import INSTRUMENTS
+
+logger = logging.getLogger(__name__)
 
 DISCOVERY_UNIVERSE = ("SPY", "QQQ", "IWM", "DIA", "XLK", "XLF", "XLV", "XLE",
                       "GLD", "SLV", "TLT", "HYG", "EEM", "SMH", "ARKK")
@@ -147,6 +150,7 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
         try:
             rows, error = await services.daily_history(symbol, outputsize=220)
         except Exception as exc:
+            logger.warning("Could not fetch history for %s: %s", symbol, exc)
             excluded.append((symbol, str(exc)[:120]))
             continue
         if rows and evaluate_history(symbol, rows, now) is not None:
@@ -157,12 +161,12 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
         "🔎 <b>OPORTUNIDADES · SWING 1–3 MESES</b>",
         "",
         "⏸️ <b>SIN SEÑALES DE ACTUACIÓN VALIDADAS</b>",
-        "El sistema no emite órdenes de compra, aumento, reducción o venta: "
-        "las señales técnicas actuales no cuentan con validación predictiva fuera de muestra "
-        "ni una confianza calibrada.",
+        ("El sistema no emite órdenes de compra, aumento, reducción o venta: "
+         "las señales técnicas actuales no cuentan con validación predictiva fuera de muestra "
+         "ni una confianza calibrada."),
         "",
-        f"📊 Cobertura: {evaluated}/{len(universe)} activos evaluables · "
-        f"{now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}",
+        (f"📊 Cobertura: {evaluated}/{len(universe)} activos evaluables · "
+         f"{now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}"),
         "Las alertas informativas de mercado se gestionan por separado y no implican operar.",
     ]
     if excluded:
