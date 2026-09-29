@@ -7,7 +7,7 @@ from app import monitor
 def test_monitor_primes_baseline_without_alerts(monkeypatch):
     values = {}
     quote = SimpleNamespace(price=100.0, observed_at=datetime(2026, 9, 29, tzinfo=UTC))
-    monkeypatch.setattr(monitor.db, "get_holdings", lambda: [])
+    monkeypatch.setattr(monitor.db, "get_holdings", list)
     monkeypatch.setattr(monitor.db, "quote_for", lambda symbol: quote)
     monkeypatch.setattr(monitor.db, "get_metric", lambda key: values.get(key))
     monkeypatch.setattr(
