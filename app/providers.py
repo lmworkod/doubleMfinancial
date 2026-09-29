@@ -306,6 +306,11 @@ class MarketData:
 
     async def quote(self, symbol: str) -> ProviderResult:
         errors: list[str] = []
+        yahoo = await self._yahoo_daily_quote(symbol)
+        if yahoo.value is not None:
+            return yahoo
+        if yahoo.error and yahoo.error != "symbol_not_configured":
+            errors.append(f"yahoo:{yahoo.error}")
         twelve_symbol = resolve_symbol(symbol, "twelve_data")
         finnhub_symbol = resolve_symbol(symbol, "finnhub")
         is_known_isin = symbol.strip().upper().startswith("IE") and len(symbol.strip()) == 12
@@ -369,13 +374,7 @@ class MarketData:
                 return ProviderResult(price, provider, as_of)
             errors.append(f"{provider}:quote_unavailable")
 
-        # Yahoo Finance is the primary unauthenticated daily-price source.
-        yahoo = await self._yahoo_daily_quote(symbol)
-        if yahoo.value is not None:
-            return yahoo
-        if yahoo.error and yahoo.error != "symbol_not_configured":
-            errors.append(f"yahoo:{yahoo.error}")
-
+        # Stooq remains a secondary fallback for its explicit symbol allowlist.
         stooq = await self._stooq_quote(symbol)
         if stooq.value is not None:
             return stooq
