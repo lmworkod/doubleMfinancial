@@ -179,7 +179,7 @@ class MarketData:
     async def _yahoo_daily_quote(self, symbol: str) -> ProviderResult:
         """Best-effort daily close; not an official/licensed market-data API."""
         key = symbol.strip().upper()
-        ticker = YAHOO_SYMBOLS.get(key)
+        ticker = YAHOO_SYMBOLS.get(key) or (None if key.startswith("IE") and len(key) == 12 else key)
         if not ticker:
             return ProviderResult(None, "yahoo_chart", None, "symbol_not_configured")
         payload, error = await self._get_json(
@@ -196,8 +196,8 @@ class MarketData:
             if returned_symbol and returned_symbol != ticker.upper():
                 return ProviderResult(None, "yahoo_chart", None, "symbol_mismatch")
             currency = str(meta.get("currency", "")).upper()
-            expected = INSTRUMENTS[key].quote_currency if key in INSTRUMENTS else "EUR"
-            if currency != expected:
+            expected = INSTRUMENTS[key].quote_currency if key in INSTRUMENTS else None
+            if expected and currency != expected:
                 return ProviderResult(None, "yahoo_chart", None, "currency_mismatch")
             timestamps = result.get("timestamp") or []
             closes = result["indicators"]["quote"][0].get("close") or []
@@ -352,18 +352,18 @@ class MarketData:
                 return ProviderResult(price, provider, as_of)
             errors.append(f"{provider}:quote_unavailable")
 
-        # Free, unauthenticated daily close fallback for regular US symbols.
-        stooq = await self._stooq_quote(symbol)
-        if stooq.value is not None:
-            return stooq
-        if stooq.error and stooq.error != "symbol_not_configured":
-            errors.append(f"stooq:{stooq.error}")
-
+        # Yahoo Finance is the primary unauthenticated daily-price source.
         yahoo = await self._yahoo_daily_quote(symbol)
         if yahoo.value is not None:
             return yahoo
         if yahoo.error and yahoo.error != "symbol_not_configured":
             errors.append(f"yahoo:{yahoo.error}")
+
+        stooq = await self._stooq_quote(symbol)
+        if stooq.value is not None:
+            return stooq
+        if stooq.error and stooq.error != "symbol_not_configured":
+            errors.append(f"stooq:{stooq.error}")
         return ProviderResult(None, "none", None, "; ".join(errors) or "quote_unavailable")
 
     async def fx_usd_per_eur(self) -> ProviderResult:
