@@ -2,8 +2,8 @@
 
 Alerts describe observed price moves only. They are not trading instructions.
 """
-from html import escape
 import logging
+from html import escape
 
 from app import db
 
