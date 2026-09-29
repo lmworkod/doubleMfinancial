@@ -90,14 +90,14 @@ def build_daily_digest(now: datetime | None = None) -> str:
     ]
     items, total, coverage = portfolio_snapshot()
     if not items:
-        lines.extend(["", "💼 <b>CARTERA</b>", "Inventario · No hay posiciones registradas."])
+        lines.extend(["", "💼 <b>CARTERA</b>", "Inventario: no hay posiciones registradas."])
     else:
-        lines.extend(["", "💼 <b>CARTERA</b>", f"Valor conocido · <b>{total:,.2f} EUR</b>",
+        lines.extend(["", "💼 <b>CARTERA</b>", f"Valor conocido: <b>{total:,.2f} EUR</b>",
                       f"Cobertura · <b>{coverage:.0%}</b>"])
         fingerprint = holdings_fingerprint(items)
         lines.extend([
-            f"🗓️ P/L 24 h · <b>{_pnl_since(total, now_utc - timedelta(days=1), fingerprint, now_utc)}</b>",
-            f"📅 P/L 7 días · <b>{_pnl_since(total, now_utc - timedelta(days=7), fingerprint, now_utc)}</b>",
+            f"🗓️ P/L del día: <b>{_pnl_since(total, now_utc - timedelta(days=1), fingerprint, now_utc)}</b>",
+            f"📅 P/L acumulado de la semana: <b>{_pnl_since(total, now_utc - timedelta(days=7), fingerprint, now_utc)}</b>",
             "", "📦 <b>POSICIONES</b>"
         ])
         for item in items:
@@ -112,7 +112,7 @@ def build_daily_digest(now: datetime | None = None) -> str:
             else:
                 arrow = "🔴⬇️"
             pnl = f" · P/L desde coste: {item.pnl:+,.2f} EUR" if item.pnl is not None else ""
-            lines.append(f"{arrow} <b>{escape(item.symbol)}</b> · {item.quantity:g} × {item.price:,.4f} {escape(item.currency)} · {value}{pnl}")
+            lines.append(f"{arrow} <b>{escape(item.symbol)}</b>: {item.quantity:g} × {item.price:,.4f} {escape(item.currency)} · {value}{pnl}")
     if items and coverage == 1.0:
         db.record_portfolio_snapshot(total, coverage, holdings_fingerprint(items), now_utc)
     lines.extend(["", "🌐 <b>MACRO Y DIVISA</b>"])
@@ -127,5 +127,5 @@ def build_daily_digest(now: datetime | None = None) -> str:
                   f"• Mercado · {human_age(market_at, now_utc)}",
                   f"• Macro · {human_age(macro_at, now_utc)}",
                   "", "<i>Los cierres pueden corresponder al último día hábil. Las cotizaciones fallidas conservan el último valor válido; revisa su antigüedad. P/L al FX actual; sin efectivo ni comisiones.</i>",
-                  "🧪 <b>SP500-VRM</b> · Sin probabilidades operativas: calibración pendiente."])
+                  "🧪 <b>SP500-VRM</b> permanece sin probabilidades operativas: calibración pendiente."])
     return "\n".join(lines)
