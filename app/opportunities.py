@@ -170,4 +170,4 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
         lines.extend(f"• {escape(symbol)}: {escape(reason)}" for symbol, reason in excluded[:8])
         if len(excluded) > 8:
             lines.append(f"• y {len(excluded) - 8} activos más")
-    return ["\\n".join(lines)]
+    return ["\n".join(lines)]
