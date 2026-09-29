@@ -78,7 +78,11 @@ def test_walk_forward_calibration_uses_chronological_holdout():
         frame, ["x"], "target", minimum_train=200, minimum_test=50
     )
     assert result.status == "evaluated_not_approved"
-    assert result.n_train + result.n_test == n
+    # The 20 observations immediately before the test set are purged to
+    # prevent overlapping 20-session outcome windows across the split.
+    assert result.n_train + result.n_test == n - 20
+    assert result.n_train >= 200
+    assert result.n_test >= 50
     assert result.brier_score is not None
     assert 0 <= result.brier_score <= 1
     assert result.log_loss is not None
