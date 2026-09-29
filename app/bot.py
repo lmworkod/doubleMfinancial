@@ -1,6 +1,6 @@
 import logging
-from html import escape
 from datetime import UTC, datetime
+from html import escape
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command, CommandStart
