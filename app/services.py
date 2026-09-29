@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class Services:
+    async def daily_history(self, symbol: str, outputsize: int = 220):
+        """Expose provider daily bars to analytics without fabricating history."""
+        return await market_data.daily_history(symbol, outputsize=outputsize)
+
     async def refresh_quotes(self) -> dict[str, str]:
         results: dict[str, str] = {}
         symbols = sorted(set(settings.symbols + [holding.symbol for holding in db.get_holdings()]))
