@@ -23,7 +23,7 @@ def test_monitor_primes_baseline_without_alerts(monkeypatch):
 def test_monitor_alerts_only_above_market_threshold(monkeypatch):
     values = {"monitor_price_mercado_SPY": SimpleNamespace(value="100.0")}
     quote = SimpleNamespace(price=104.0, observed_at=datetime(2026, 9, 29, tzinfo=UTC))
-    monkeypatch.setattr(monitor.db, "get_holdings", lambda: [])
+    monkeypatch.setattr(monitor.db, "get_holdings", list)
     monkeypatch.setattr(monitor.db, "quote_for", lambda symbol: quote if symbol == "SPY" else None)
     monkeypatch.setattr(monitor.db, "get_metric", lambda key: values.get(key))
     monkeypatch.setattr(
