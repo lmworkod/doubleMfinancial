@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
+import pytest
 
 from app.risk import (
     RiskObservation,
@@ -87,7 +88,6 @@ def test_walk_forward_calibration_uses_chronological_holdout():
 
 def test_walk_forward_calibration_rejects_non_binary_labels():
     from app.risk import calibrate_binary_walk_forward
-    import pytest
 
     frame = pd.DataFrame({"x": [float(i) for i in range(400)],
                           "target": [0, 1, 2, 0] * 100})
