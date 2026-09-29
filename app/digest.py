@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 from app import db
-from app.portfolio import portfolio_snapshot
+from app.portfolio import holdings_fingerprint, portfolio_snapshot
 
 
 def _aware(value: datetime) -> datetime:
@@ -36,11 +36,6 @@ def _parse_datetime(value: str | None) -> datetime | None:
         return _aware(datetime.fromisoformat(value))
     except ValueError:
         return None
-
-
-def _holdings_fingerprint(items) -> str:
-    payload = [(item.symbol, round(item.quantity, 10)) for item in items]
-    return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
 
 
 def _pnl_since(total: float, cutoff: datetime, fingerprint: str, now: datetime) -> str:
@@ -104,7 +99,7 @@ def build_daily_digest(now: datetime | None = None) -> str:
     else:
         lines.extend(["", f"💼 Valor conocido: {total:,.2f} EUR",
                       f"Cobertura de valoración: {coverage:.0%}"])
-        fingerprint = _holdings_fingerprint(items)
+        fingerprint = holdings_fingerprint(items)
         # Save a baseline only when every holding is valued, avoiding partial-total P/L.
         if coverage == 1.0:
             db.record_portfolio_snapshot(total, coverage, fingerprint, now_utc)
