@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import hashlib
 import json
+from dataclasses import dataclass
 
 from app.config import settings
 from app.db import get_holdings, quote_for
