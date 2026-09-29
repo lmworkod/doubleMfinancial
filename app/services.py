@@ -21,7 +21,7 @@ class Services:
             return [(item.session_date, item.close) for item in cached], None
         rows, error = await market_data.daily_history(key, outputsize=limit)
         if rows:
-            db.upsert_daily_prices(key, rows, "yahoo_daily")
+            db.upsert_daily_prices(key, rows, "market_history")
         merged = db.daily_prices_for(key, limit=limit)
         if merged:
             return [(item.session_date, item.close) for item in merged], None if rows else error
