@@ -216,12 +216,15 @@ class MarketData:
         is_isin = key.startswith("IE") and len(key) == 12
         errors: list[str] = []
         if settings.twelve_data_api_key and ticker:
-            params = {"symbol": ticker, "interval": "1day", "outputsize": str(min(max(outputsize, 60), 500)),
+            params = {"symbol": ticker, "interval": "1day",
+                      "outputsize": str(min(max(outputsize, 60), 500)),
                       "apikey": settings.twelve_data_api_key}
             exchange = resolve_exchange(key, "twelve_data")
             if exchange:
                 params["exchange"] = exchange
-            payload, error = await self._get_json("https://api.twelvedata.com/time_series", params, "twelve_data")
+            payload, error = await self._get_json(
+                "https://api.twelvedata.com/time_series", params, "twelve_data"
+            )
             if error:
                 errors.append(f"twelve_data:{error}")
             else:
@@ -237,6 +240,25 @@ class MarketData:
                 if len(rows) >= 2:
                     return sorted(rows), None
                 errors.append("twelve_data:insufficient_history")
+        stooq_ticker = STOOQ_SYMBOLS.get(key)
+        if stooq_ticker:
+            raw, _, error = await self._get_text(
+                "https://stooq.com/q/d/l/", {"s": stooq_ticker, "i": "d"}, "stooq"
+            )
+            if error:
+                errors.append(f"stooq:{error}")
+            else:
+                rows = []
+                try:
+                    for item in csv.DictReader(StringIO(raw or "")):
+                        close = _positive_price(item.get("Close"))
+                        observed = datetime.strptime(item["Date"], "%Y-%m-%d").replace(tzinfo=UTC)
+                        if close is not None:
+                            rows.append((observed, close))
+                except (ValueError, KeyError, TypeError):
+                    errors.append("stooq:invalid_history")
+                if len(rows) >= 2:
+                    return rows[-min(max(outputsize, 60), 500):], None
         yahoo_ticker = YAHOO_SYMBOLS.get(key)
         if yahoo_ticker:
             payload, error = await self._get_json(
@@ -258,7 +280,7 @@ class MarketData:
                         if isinstance(timestamp, (int, float)) and timestamp > 0 and close is not None:
                             rows.append((datetime.fromtimestamp(timestamp, UTC), close))
                     if len(rows) >= 2:
-                        return rows, None
+                        return rows[-min(max(outputsize, 60), 500):], None
                 except (KeyError, IndexError, TypeError, ValueError):
                     errors.append("yahoo:invalid_history")
         if is_isin and not ticker and not yahoo_ticker:
