@@ -1,3 +1,5 @@
+import hashlib
+import json
 from dataclasses import dataclass
 
 from app.config import settings
@@ -34,3 +36,9 @@ def portfolio_snapshot() -> tuple[list[PortfolioLine], float, float]:
         lines.append(PortfolioLine(holding.symbol, holding.quantity, price, currency, value,
                                    holding.average_cost, pnl))
     return lines, total, known / len(lines) if lines else 0.0
+
+
+def holdings_fingerprint(items: list[PortfolioLine]) -> str:
+    """Stable identity for composition-comparable valuation snapshots."""
+    payload = [(item.symbol, round(item.quantity, 10)) for item in items]
+    return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()

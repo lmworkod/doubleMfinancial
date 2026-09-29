@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
+import pytest
 
 from app.risk import (
     RiskObservation,
@@ -54,3 +55,46 @@ def test_missing_cost_does_not_fabricate_pnl():
     ))
     assert result.pnl_pct is None
     assert result.level == "info"
+
+
+def test_walk_forward_calibration_requires_sufficient_history():
+    from app.risk import calibrate_binary_walk_forward
+
+    frame = pd.DataFrame({"x": [0.0, 1.0, 0.5], "target": [0, 1, 0]})
+    result = calibrate_binary_walk_forward(frame, ["x"], "target")
+    assert result.status == "insufficient_data"
+    assert result.brier_score is None
+
+
+def test_walk_forward_calibration_uses_chronological_holdout():
+    from app.risk import calibrate_binary_walk_forward
+
+    # Alternating regimes/classes make both chronological partitions testable.
+    n = 500
+    x = [float(i % 7) for i in range(n)]
+    y = [int((i // 7) % 2) for i in range(n)]
+    frame = pd.DataFrame({"x": x, "target": y})
+    result = calibrate_binary_walk_forward(
+        frame, ["x"], "target", minimum_train=200, minimum_test=50
+    )
+    assert result.status == "evaluated_not_approved"
+    # The 20 observations immediately before the test set are purged to
+    # prevent overlapping 20-session outcome windows across the split.
+    assert result.n_train + result.n_test == n - 20
+    assert result.n_train >= 200
+    assert result.n_test >= 50
+    assert result.brier_score is not None
+    assert 0 <= result.brier_score <= 1
+    assert result.log_loss is not None
+    assert 0 <= result.calibration_error <= 1
+    assert set(result.coefficients) == {"x"}
+
+
+def test_walk_forward_calibration_rejects_non_binary_labels():
+    from app.risk import calibrate_binary_walk_forward
+
+    frame = pd.DataFrame({"x": [float(i) for i in range(400)],
+                          "target": [0, 1, 2, 0] * 100})
+    with pytest.raises(ValueError, match="binary"):
+        calibrate_binary_walk_forward(frame, ["x"], "target",
+                                      minimum_train=200, minimum_test=50)

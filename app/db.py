@@ -89,6 +89,58 @@ def set_metric(key: str, value: str) -> None:
             item.value, item.observed_at = value, now
 
 
+class PortfolioSnapshot(Base):
+    """Immutable portfolio valuation snapshot used for daily/weekly P&L."""
+    __tablename__ = "portfolio_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    value_eur: Mapped[float] = mapped_column(Float, nullable=False)
+    coverage: Mapped[float] = mapped_column(Float, nullable=False)
+    holdings_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class MetricHistory(Base):
+    __tablename__ = "metric_history"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 def get_metric(key: str) -> Metric | None:
     with SessionLocal() as session:
         return session.get(Metric, key)
+
+
+def record_portfolio_snapshot(value_eur: float, coverage: float, holdings_fingerprint: str,
+                              captured_at: datetime | None = None) -> None:
+    captured_at = captured_at or datetime.now(UTC)
+    with SessionLocal.begin() as session:
+        session.add(PortfolioSnapshot(captured_at=captured_at, value_eur=value_eur,
+                                      coverage=coverage,
+                                      holdings_fingerprint=holdings_fingerprint))
+
+
+def portfolio_snapshot_before(cutoff: datetime, fingerprint: str) -> PortfolioSnapshot | None:
+    with SessionLocal() as session:
+        return session.scalar(select(PortfolioSnapshot)
+                              .where(PortfolioSnapshot.captured_at <= cutoff,
+                                     PortfolioSnapshot.holdings_fingerprint == fingerprint)
+                              .order_by(PortfolioSnapshot.captured_at.desc()).limit(1))
+
+
+def record_metric_history(key: str, value: float, observed_at: datetime) -> None:
+    with SessionLocal.begin() as session:
+        item = session.scalar(select(MetricHistory).where(
+            MetricHistory.key == key, MetricHistory.observed_at == observed_at))
+        if item is None:
+            session.add(MetricHistory(key=key, value=value, observed_at=observed_at))
+        else:
+            item.value = value
+
+
+def metric_history_at_or_before(key: str, cutoff: datetime) -> MetricHistory | None:
+    with SessionLocal() as session:
+        return session.scalar(select(MetricHistory).where(
+            MetricHistory.key == key, MetricHistory.observed_at <= cutoff)
+            .order_by(MetricHistory.observed_at.desc()).limit(1))

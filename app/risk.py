@@ -147,3 +147,82 @@ def portfolio_risk_report(
 ) -> list[AssetRisk]:
     """Return per-holding quality diagnostics; no correlation is assumed."""
     return [assess_asset(item, now) for item in observations]
+
+
+@dataclass(frozen=True)
+class CalibrationReport:
+    """Chronological out-of-sample diagnostics for a binary event model."""
+    status: str
+    n_train: int
+    n_test: int
+    brier_score: float | None
+    log_loss: float | None
+    prevalence: float | None
+    mean_predicted_probability: float | None
+    calibration_error: float | None
+    coefficients: dict[str, float] | None
+    intercept: float | None
+
+
+def calibrate_binary_walk_forward(
+    frame: pd.DataFrame,
+    feature_columns: list[str],
+    target_column: str,
+    test_fraction: float = 0.25,
+    minimum_train: int = 252,
+    minimum_test: int = 60,
+) -> CalibrationReport:
+    """Fit a regularized logistic model on the past and evaluate on a later holdout.
+
+    The caller must provide a chronologically ordered dataset with labels whose
+    horizons do not overlap across the train/test boundary. This function refuses
+    undersized, non-finite, single-class or malformed samples and never claims
+    a model is validated from in-sample fit quality.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import brier_score_loss, log_loss
+
+    empty = CalibrationReport("insufficient_data", 0, 0, None, None, None,
+                              None, None, None, None)
+    if not feature_columns or target_column not in frame:
+        return empty
+    if not 0 < test_fraction < 0.5:
+        raise ValueError("test_fraction must be between 0 and 0.5")
+    data = frame[feature_columns + [target_column]].copy()
+    data = data.replace([float("inf"), float("-inf")], float("nan")).dropna()
+    if len(data) < minimum_train + minimum_test:
+        return empty
+    y = data[target_column]
+    if not y.isin([0, 1, False, True]).all():
+        raise ValueError("target must contain only binary 0/1 labels")
+    # Purge the 20 observations before the holdout: forward 20-session labels
+    # must not share outcome windows across the train/test boundary.
+    split = max(minimum_train + 20, int(len(data) * (1 - test_fraction)))
+    train, test = data.iloc[:split - 20], data.iloc[split:]
+    if len(train) < minimum_train or len(test) < minimum_test:
+        return empty
+    if train[target_column].nunique() < 2 or test[target_column].nunique() < 2:
+        return CalibrationReport("insufficient_class_diversity", len(train), len(test),
+                                 None, None, None, None, None, None, None)
+    model = LogisticRegression(C=1.0, class_weight=None, max_iter=2000,
+                               solver="lbfgs")
+    model.fit(train[feature_columns].astype(float), train[target_column].astype(int))
+    probabilities = model.predict_proba(test[feature_columns].astype(float))[:, 1]
+    actual = test[target_column].astype(int).to_numpy()
+    brier = float(brier_score_loss(actual, probabilities))
+    loss = float(log_loss(actual, probabilities, labels=[0, 1]))
+    # Expected calibration error over ten fixed probability bins.
+    edges = [i / 10 for i in range(11)]
+    ece = 0.0
+    for i in range(10):
+        mask = ((probabilities >= edges[i]) &
+                (probabilities < edges[i + 1] if i < 9 else probabilities <= edges[i + 1]))
+        if mask.any():
+            ece += float(mask.mean()) * abs(float(actual[mask].mean()) -
+                                            float(probabilities[mask].mean()))
+    return CalibrationReport(
+        "evaluated_not_approved", len(train), len(test), brier, loss,
+        float(actual.mean()), float(probabilities.mean()), float(ece),
+        {name: float(value) for name, value in zip(feature_columns, model.coef_[0])},
+        float(model.intercept_[0]),
+    )
