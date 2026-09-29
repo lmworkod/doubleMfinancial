@@ -27,5 +27,21 @@ def start_scheduler(services: Services, bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(send_daily_digest, "cron", day_of_week="mon-fri", hour=23,
         minute=0, timezone="Europe/Madrid", id="daily_portfolio_digest",
         coalesce=True, max_instances=1, misfire_grace_time=1800)
+    async def monitor_portfolio() -> None:
+        from app.monitor import scan_portfolio_signal_changes
+
+        try:
+            await services.refresh_quotes()
+            alerts = await scan_portfolio_signal_changes(services)
+            for alert in alerts:
+                for user_id in sorted(settings.allowed_user_ids):
+                    await bot.send_message(user_id, alert, parse_mode="HTML")
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Scheduled portfolio monitoring failed")
+
+    scheduler.add_job(monitor_portfolio, "interval", hours=8,
+        id="portfolio_signal_monitor", coalesce=True, max_instances=1,
+        misfire_grace_time=1800)
     scheduler.start()
     return scheduler

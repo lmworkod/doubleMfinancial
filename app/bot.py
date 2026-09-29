@@ -48,18 +48,31 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if not lines:
             await message.answer("Cartera vacía. Ejemplo: /add SPY 2 500")
             return
-        parts = ["💼 <b>CARTERA</b> · Valoración indicativa", ""]
+        valued = [line for line in lines if line.market_value is not None]
+        parts = ["💼 <b>CARTERA · PANEL DE SEGUIMIENTO</b>", ""]
         for line in lines:
             if line.price is None:
-                parts.append(f"{line.symbol}: {line.quantity:g} unidades · sin cotización")
-            else:
-                value = f" = {line.market_value:,.2f} EUR" if line.market_value is not None else " · valor EUR no disponible"
-                pnl = f" · P/L {line.pnl:,.2f} EUR" if line.pnl is not None else ""
-                parts.append(f"{line.symbol}: {line.quantity:g} × {line.price:,.4f} {line.currency}{value}{pnl}")
-        parts += [f"Valor conocido: {total:,.2f} EUR",
-                  f"Cobertura de cotizaciones: {coverage:.0%}",
-                  f"FX ECB USD/EUR: {db.get_metric('fx_usd_per_eur').value if db.get_metric('fx_usd_per_eur') else 'no disponible'} (USD por EUR).",
-                  "Valoración en EUR; P/L convertido al tipo actual, no al tipo histórico de compra. No incluye efectivo ni comisiones."]
+                parts.append(f"<b>{escape(line.symbol)}</b>: {line.quantity:g} unidades · cotización no disponible")
+                continue
+            value = (f"{line.market_value:,.2f} EUR" if line.market_value is not None
+                     else "valor EUR no disponible")
+            weight = (f" · peso {line.market_value / total:.1%}"
+                      if line.market_value is not None and total > 0 else "")
+            pnl = ""
+            if line.pnl is not None:
+                pnl_pct = (line.price / line.average_cost - 1
+                           if line.average_cost is not None and line.average_cost > 0 else None)
+                pnl = f" · P/L {line.pnl:+,.2f} EUR" + (f" ({pnl_pct:+.2%})" if pnl_pct is not None else "")
+            parts.append(f"<b>{escape(line.symbol)}</b> · {line.quantity:g} × {line.price:,.4f} {escape(line.currency)}\n"
+                         f"  Valor: {value}{weight}{pnl}")
+        largest = max((line.market_value / total for line in valued), default=0.0) if total > 0 else None
+        parts.extend(["", f"💰 <b>Valor conocido:</b> {total:,.2f} EUR",
+                      f"📡 <b>Cobertura de cotizaciones:</b> {coverage:.0%} ({len(valued)}/{len(lines)} posiciones)"])
+        if largest is not None:
+            parts.append(f"🎯 <b>Mayor peso individual:</b> {largest:.1%}")
+        fx = db.get_metric("fx_usd_per_eur")
+        parts.append(f"💱 USD por EUR: {escape(str(fx.value if fx else 'no disponible'))}")
+        parts.append("Valoración indicativa en EUR. P/L convertido al tipo de cambio actual; no incluye efectivo, comisiones ni impuestos. La cobertura incompleta puede distorsionar pesos y concentración.")
         await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("add"))

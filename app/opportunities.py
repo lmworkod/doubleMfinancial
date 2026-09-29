@@ -5,6 +5,7 @@ discovery universe is explicit and limited; missing/stale history is excluded.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -14,6 +15,8 @@ import numpy as np
 from app import db
 from app.config import settings
 from app.instruments import INSTRUMENTS
+
+logger = logging.getLogger(__name__)
 
 DISCOVERY_UNIVERSE = ("SPY", "QQQ", "IWM", "DIA", "XLK", "XLF", "XLV", "XLE",
                       "GLD", "SLV", "TLT", "HYG", "EEM", "SMH", "ARKK")
@@ -138,59 +141,37 @@ def _format_candidate(item: Opportunity) -> list[str]:
 
 
 async def build_opportunities_report(services, now: datetime | None = None) -> list[str]:
+    """Show only operational signals; none are enabled before out-of-sample validation."""
     now = _aware(now or datetime.now(UTC))
     universe = _source_universe()
-    candidates, excluded = [], []
-    for symbol, origin in universe:
-        rows, error = await services.daily_history(symbol, outputsize=220)
-        if not rows:
-            excluded.append((symbol, error or "histórico no disponible", origin))
+    evaluated = 0
+    excluded = []
+    for symbol, _origin in universe:
+        try:
+            rows, error = await services.daily_history(symbol, outputsize=220)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not fetch history for %s: %s", symbol, exc)
+            excluded.append((symbol, str(exc)[:120]))
             continue
-        item = evaluate_history(symbol, rows, now)
-        if item is None:
-            excluded.append((symbol, "histórico insuficiente o desactualizado", origin))
-            continue
-        candidates.append(Opportunity(**{**item.__dict__, "origin": origin}))
-
-    sections = (
-        ("💼 <b>1. CARTERA · POSICIONES ACTUALES</b>", "cartera"),
-        ("👀 <b>2. WATCHLIST · ACTIVOS OBSERVADOS</b>", "watchlist"),
-        ("🧭 <b>3. EXPLORACIÓN · UNIVERSO AMPLIADO</b>", "exploración"),
-    )
-    lines = [
-        "🔎 <b>OPORTUNIDADES · SWING</b> · 1–3 meses",
-        f"🌐 Universo: {len(universe)} activos · Evaluables: {len(candidates)} · {now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}",
-        "🟢 Sesgo comprador · 🔴 Sesgo vendedor · 🟡 Neutral",
-    ]
-    for heading, source in sections:
-        members = [item for item in candidates if source in item.origin.split(" + ")]
-        members.sort(key=lambda item: (_signal(item)[1] == "neutral", -item.score, item.symbol))
-        lines.extend(["", heading, f"📊 {len(members)} activos evaluables"])
-        if not members:
-            lines.append("— Sin activos evaluables en esta sección.")
+        if rows and evaluate_history(symbol, rows, now) is not None:
+            evaluated += 1
         else:
-            for item in members[:MAX_RESULTS]:
-                lines.extend(_format_candidate(item))
-            if len(members) > MAX_RESULTS:
-                lines.append(f"… y {len(members) - MAX_RESULTS} activos más.")
+            excluded.append((symbol, error or "histórico insuficiente o desactualizado"))
+    lines = [
+        "🔎 <b>OPORTUNIDADES · SWING 1–3 MESES</b>",
+        "",
+        "⏸️ <b>SIN SEÑALES DE ACTUACIÓN VALIDADAS</b>",
+        ("El sistema no emite órdenes de compra, aumento, reducción o venta: "
+         "las señales técnicas actuales no cuentan con validación predictiva fuera de muestra "
+         "ni una confianza calibrada."),
+        "",
+        (f"📊 Cobertura: {evaluated}/{len(universe)} activos evaluables · "
+         f"{now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}"),
+        "Las alertas informativas de mercado se gestionan por separado y no implican operar.",
+    ]
     if excluded:
-        lines.extend(["", f"⚠️ <b>COBERTURA</b> · {len(excluded)} activos excluidos"])
-        lines.extend(f"• <b>{escape(symbol)}</b> ({escape(origin)}): {escape(reason)}"
-                     for symbol, reason, origin in excluded[:8])
+        lines.extend(["", f"⚠️ Datos no evaluables: {len(excluded)}"])
+        lines.extend(f"• {escape(symbol)}: {escape(reason)}" for symbol, reason in excluded[:8])
         if len(excluded) > 8:
             lines.append(f"• y {len(excluded) - 8} activos más")
-    lines.extend([
-        "",
-        "<i>El sesgo es una clasificación técnica descriptiva, no una orden ni recomendación de compra o venta. El índice 0–100 no es una probabilidad ni una rentabilidad esperada. El universo de exploración es una lista explícita de ETF, no un screener exhaustivo. No se incorporan fundamentales, costes ni liquidez.</i>",
-    ])
-    chunks, current, size = [], [], 0
-    for line in lines:
-        increment = len(line) + (1 if current else 0)
-        if size + increment > 3800 and current:
-            chunks.append("\n".join(current))
-            current, size = [], 0
-        current.append(line)
-        size += increment
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
+    return ["\n".join(lines)]
