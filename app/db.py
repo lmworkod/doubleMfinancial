@@ -33,6 +33,15 @@ class Metric(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class DailyPrice(Base):
+    """Persisted daily close keyed by instrument and market session."""
+    __tablename__ = "daily_prices"
+    symbol: Mapped[str] = mapped_column(String(24), primary_key=True)
+    session_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -144,3 +153,29 @@ def metric_history_at_or_before(key: str, cutoff: datetime) -> MetricHistory | N
         return session.scalar(select(MetricHistory).where(
             MetricHistory.key == key, MetricHistory.observed_at <= cutoff)
             .order_by(MetricHistory.observed_at.desc()).limit(1))
+
+
+def daily_prices_for(symbol: str, limit: int = 500) -> list[DailyPrice]:
+    """Return the most recent persisted sessions in chronological order."""
+    with SessionLocal() as session:
+        rows = list(session.scalars(
+            select(DailyPrice).where(DailyPrice.symbol == symbol.upper())
+            .order_by(DailyPrice.session_date.desc()).limit(max(1, min(limit, 500)))
+        ))
+        return list(reversed(rows))
+
+
+def upsert_daily_prices(symbol: str, rows: list[tuple[datetime, float]], source: str) -> int:
+    """Insert valid daily closes without replacing a known close for that session."""
+    inserted = 0
+    with SessionLocal.begin() as session:
+        for observed_at, close in rows:
+            if not isinstance(close, (int, float)) or close <= 0:
+                continue
+            session_date = observed_at.replace(hour=0, minute=0, second=0, microsecond=0)
+            item = session.get(DailyPrice, (symbol.upper(), session_date))
+            if item is None:
+                session.add(DailyPrice(symbol=symbol.upper(), session_date=session_date,
+                                       close=float(close), source=source))
+                inserted += 1
+    return inserted
