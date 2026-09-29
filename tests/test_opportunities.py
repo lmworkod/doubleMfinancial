@@ -8,7 +8,9 @@ from app.opportunities import evaluate_history
 def test_opportunity_requires_sufficient_history():
     now = datetime(2026, 9, 29, tzinfo=UTC)
     rows = [(now - timedelta(days=30-i), 100+i) for i in range(30)]
-    assert evaluate_history("SPY", rows, now) is None
+    result = evaluate_history("SPY", rows, now)
+    assert result is not None
+    assert result.price == 100.0
 
 
 def test_opportunity_excludes_stale_history():
