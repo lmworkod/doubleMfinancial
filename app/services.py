@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from app import db
 from app.config import settings
+from app.portfolio import holdings_fingerprint, portfolio_snapshot
 from app.providers import market_data
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,10 @@ class Services:
             )
             logger.warning("FX refresh failed: %s", fx.error or "unavailable")
         db.set_metric("last_quote_refresh", datetime.now(UTC).isoformat())
+        # Persist comparable portfolio valuations after every successful refresh.
+        items, total, coverage = portfolio_snapshot()
+        if items and coverage == 1.0:
+            db.record_portfolio_snapshot(total, coverage, holdings_fingerprint(items))
         return results
 
     async def refresh_macro(self) -> dict[str, str]:
