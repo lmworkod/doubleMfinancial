@@ -1,8 +1,6 @@
 """Daily portfolio digest formatting for the authorized Telegram owner."""
 from __future__ import annotations
 
-import hashlib
-import json
 from datetime import UTC, datetime, timedelta
 
 from app import db
@@ -42,10 +40,6 @@ def _pnl_since(total: float, cutoff: datetime, fingerprint: str, now: datetime) 
     baseline = db.portfolio_snapshot_before(cutoff, fingerprint)
     if baseline is None or baseline.coverage < 1.0:
         return "no disponible (histórico comparable insuficiente)"
-    # A baseline must be reasonably close to its requested horizon.
-    age = cutoff - _aware(baseline.captured_at)
-    if age > timedelta(days=2):
-        return "no disponible (sin valoración de referencia cercana)"
     return f"{total - baseline.value_eur:+,.2f} EUR"
 
 
@@ -100,9 +94,6 @@ def build_daily_digest(now: datetime | None = None) -> str:
         lines.extend(["", f"💼 Valor conocido: {total:,.2f} EUR",
                       f"Cobertura de valoración: {coverage:.0%}"])
         fingerprint = holdings_fingerprint(items)
-        # Save a baseline only when every holding is valued, avoiding partial-total P/L.
-        if coverage == 1.0:
-            db.record_portfolio_snapshot(total, coverage, fingerprint, now_utc)
         lines.extend([
             f"P/L del día: {_pnl_since(total, now_utc - timedelta(days=1), fingerprint, now_utc)}",
             f"P/L acumulado de la semana: {_pnl_since(total, now_utc - timedelta(days=7), fingerprint, now_utc)}",
@@ -121,6 +112,8 @@ def build_daily_digest(now: datetime | None = None) -> str:
                 arrow = "🔴⬇️"
             pnl = f" · P/L desde coste: {item.pnl:+,.2f} EUR" if item.pnl is not None else ""
             lines.append(f"• {arrow} {item.symbol}: {item.quantity:g} × {item.price:,.4f} {item.currency} · {value}{pnl}")
+    if items and coverage == 1.0:
+        db.record_portfolio_snapshot(total, coverage, holdings_fingerprint(items), now_utc)
     lines.extend(["", "🌐 Datos macro"])
     for key, label in (("fed_funds", "Fed Funds"), ("ust10y", "Treasury 10Y"),
                        ("usd_broad", "USD broad")):
