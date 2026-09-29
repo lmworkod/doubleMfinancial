@@ -143,7 +143,7 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
     universe = _source_universe()
     evaluated = 0
     excluded = []
-    for symbol, origin in universe:
+    for symbol, _origin in universe:
         try:
             rows, error = await services.daily_history(symbol, outputsize=220)
         except Exception as exc:
