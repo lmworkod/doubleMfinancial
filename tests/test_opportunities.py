@@ -16,7 +16,7 @@ def _history(now: datetime, count: int = 100, *, latest_age: int = 0) -> list[tu
 
 def test_opportunity_requires_sufficient_history():
     now = datetime(2026, 9, 29, tzinfo=UTC)
-    rows = _history(now, count=MIN_HISTORY - 1) if False else _history(now, count=63)
+    rows = _history(now, count=63)
     assert evaluate_history("SPY", rows, now) is None
 
 
