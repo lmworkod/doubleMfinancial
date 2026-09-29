@@ -5,10 +5,10 @@ discovery universe is explicit and limited; missing/stale history is excluded.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
-import logging
 
 import numpy as np
 
