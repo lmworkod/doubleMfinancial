@@ -54,3 +54,42 @@ def test_opportunity_ignores_invalid_prices():
     assert result is not None
     assert result.price == 198.0
     assert result.observed_at == rows[-2][0]
+
+
+from app.opportunities import Opportunity, _format_candidate, _signal
+
+
+def _candidate(*, origin: str = "cartera", trend: str = "alcista",
+               momentum_21d: float = 0.05, momentum_63d: float = 0.10,
+               score: float = 80) -> Opportunity:
+    return Opportunity(
+        symbol="SPY", name="SPDR S&P 500", origin=origin, price=500.0,
+        currency="USD", observed_at=datetime(2026, 9, 29, tzinfo=UTC),
+        momentum_63d=momentum_63d, momentum_21d=momentum_21d,
+        volatility_20d=0.15, drawdown_126d=-0.02, trend=trend,
+        evidence=("momentum positivo",), score=score,
+    )
+
+
+def test_signal_classifies_positive_trend_as_buying_bias():
+    assert _signal(_candidate()) == ("🟢 Sesgo comprador", "buy")
+
+
+def test_signal_classifies_negative_momentum_as_selling_bias():
+    item = _candidate(trend="mixta", momentum_21d=-0.05,
+                      momentum_63d=-0.10, score=30)
+    assert _signal(item) == ("🔴 Sesgo vendedor", "sell")
+
+
+def test_signal_keeps_mixed_conditions_neutral():
+    item = _candidate(momentum_21d=-0.01, momentum_63d=0.10)
+    assert _signal(item) == ("🟡 Neutral · señales mixtas", "neutral")
+
+
+def test_candidate_format_shows_all_origins_and_emojis():
+    lines = _format_candidate(_candidate(origin="cartera + watchlist + exploración"))
+    report = "\\n".join(lines)
+    assert "💼 cartera" in report
+    assert "👀 watchlist" in report
+    assert "🧭 exploración" in report
+    assert "📈 Momentum" in report
