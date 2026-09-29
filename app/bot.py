@@ -73,7 +73,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         fx = db.get_metric("fx_usd_per_eur")
         parts.append(f"💱 USD por EUR: {escape(str(fx.value if fx else 'no disponible'))}")
         parts.append("Valoración indicativa en EUR. P/L convertido al tipo de cambio actual; no incluye efectivo, comisiones ni impuestos. La cobertura incompleta puede distorsionar pesos y concentración.")
-        await message.answer("\\n".join(parts), parse_mode="HTML")
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("add"))
     async def add(message: Message) -> None:
