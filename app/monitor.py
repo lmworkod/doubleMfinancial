@@ -1,34 +1,60 @@
-"""Scheduled portfolio signal monitoring."""
+"""Conservative change monitor for holdings and broad-market proxies.
+
+Alerts describe observed price moves only. They are not trading instructions.
+"""
 from html import escape
 
 from app import db
-from app.opportunities import _signal, evaluate_history
+
+MARKET_PROXIES = ("SPY", "QQQ", "TLT", "GLD")
+HOLDING_MOVE_THRESHOLD = 0.05
+MARKET_MOVE_THRESHOLD = 0.03
 
 
-async def scan_portfolio_signal_changes(services) -> list[str]:
-    """Detect changes into directional technical states; never execute trades."""
+def _observe(symbol: str, threshold: float, label: str) -> str | None:
+    quote = db.quote_for(symbol)
+    if quote is None or quote.price is None or quote.price <= 0:
+        return None
+    key = f"monitor_price_{label}_{symbol}"
+    previous = db.get_metric(key)
+    db.set_metric(key, str(quote.price))
+    if previous is None:
+        return None
+    try:
+        old_price = float(previous.value)
+    except (TypeError, ValueError):
+        return None
+    if old_price <= 0:
+        return None
+    change = quote.price / old_price - 1
+    if abs(change) < threshold:
+        return None
+    direction = "subida" if change > 0 else "caída"
+    return (
+        f"📣 <b>CAMBIO RELEVANTE DE {label.upper()}</b>\n"
+        f"<b>{escape(symbol)}</b> · {direction} del {change:+.2%} "
+        f"desde la última observación del monitor.\n"
+        f"Precio observado: {quote.price:,.4f} · {escape(quote.observed_at.isoformat())}.\n"
+        "Alerta descriptiva; no constituye una señal de compra o venta."
+    )
+
+
+async def scan_portfolio_signal_changes(services=None) -> list[str]:
+    """Detect significant observed price changes; never emit unvalidated trade calls."""
     alerts = []
     for holding in db.get_holdings():
-        symbol = holding.symbol.upper()
-        rows, _error = await services.daily_history(symbol, outputsize=220)
-        item = evaluate_history(symbol, rows or [])
-        state = _signal(item)[1] if item is not None else "unavailable"
-        key = f"opportunity_signal_{symbol}"
-        previous = db.get_metric(key)
-        previous_state = previous.value if previous else None
-        db.set_metric(key, state)
-        if state not in {"buy", "sell"} or state == previous_state:
+        try:
+            alert = _observe(holding.symbol.upper(), HOLDING_MOVE_THRESHOLD, "cartera")
+            if alert:
+                alerts.append(alert)
+        except Exception:
+            # A single malformed/missing quote must not abort the full scan.
             continue
-        if state == "buy":
-            headline = "🟢 <b>SEÑAL TÉCNICA ALCISTA · REVISAR POSIBLE AUMENTO</b>"
-        else:
-            headline = "🔴 <b>SEÑAL TÉCNICA BAJISTA · REVISAR POSIBLE REDUCCIÓN</b>"
-        alerts.append(
-            f"{headline}\n<b>{escape(symbol)}</b> · {escape(item.name)}\n"
-            f"Cierre: {item.price:,.2f} {item.currency} · observado: {item.observed_at:%Y-%m-%d}\n"
-            f"Momentum 21/63 sesiones: {item.momentum_21d:+.1%} / "
-            f"{item.momentum_63d:+.1%} · índice técnico {item.score:.0f}/100.\n"
-            "Confianza predictiva: <b>no calibrada</b>. Alerta de revisión, no una orden. "
-            "Considera costes, exposición y tolerancia al riesgo."
-        )
+    for symbol in MARKET_PROXIES:
+        try:
+            alert = _observe(symbol, MARKET_MOVE_THRESHOLD, "mercado")
+            if alert:
+                alerts.append(alert)
+        except Exception:
+            continue
     return alerts
