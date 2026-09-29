@@ -43,6 +43,15 @@ def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
+def _signal(item: Opportunity) -> tuple[str, str]:
+    """Return a descriptive directional label from trend and momentum."""
+    if item.trend == "alcista" and item.momentum_21d > 0 and item.momentum_63d > 0:
+        return "🟢 Sesgo comprador", "buy"
+    if item.momentum_21d < 0 and item.momentum_63d < 0 and item.score < 50:
+        return "🔴 Sesgo vendedor", "sell"
+    return "🟡 Neutral · señales mixtas", "neutral"
+
+
 def evaluate_history(symbol: str, rows: list[tuple[datetime, float]],
                      now: datetime | None = None) -> Opportunity | None:
     """Compute a transparent descriptive score; it is not a probability."""
@@ -98,7 +107,7 @@ def evaluate_history(symbol: str, rows: list[tuple[datetime, float]],
 
 def _source_universe() -> list[tuple[str, str]]:
     holdings = {item.symbol.upper() for item in db.get_holdings()}
-    watchlist = set(settings.symbols)
+    watchlist = {symbol.upper() for symbol in settings.symbols}
     discovery = set(DISCOVERY_UNIVERSE) | set(INSTRUMENTS)
     return [
         (symbol, " + ".join(origin for condition, origin in (
@@ -109,6 +118,25 @@ def _source_universe() -> list[tuple[str, str]]:
     ]
 
 
+def _format_candidate(item: Opportunity) -> list[str]:
+    signal, _ = _signal(item)
+    origins = set(item.origin.split(" + "))
+    overlaps = [label for key, label in (
+        ("cartera", "💼 cartera"), ("watchlist", "👀 watchlist"),
+        ("exploración", "🧭 exploración"),
+    ) if key in origins]
+    return [
+        f"\n<b>{escape(item.symbol)}</b> · {signal}",
+        f"{escape(item.name)} · índice técnico {item.score:.0f}/100",
+        f"🏷️ Origen: {', '.join(overlaps)}",
+        f"💵 Cierre: {item.price:,.2f} {item.currency} · {item.observed_at:%Y-%m-%d}",
+        f"📈 Momentum: 21 sesiones {item.momentum_21d:+.1%} · 63 sesiones {item.momentum_63d:+.1%}",
+        f"🌊 Volatilidad anualizada (20 sesiones): {item.volatility_20d:.1%}",
+        f"📉 Drawdown desde máximo de 126 sesiones: {item.drawdown_126d:.1%} · Tendencia: {item.trend}",
+        "🔍 Evidencia: " + ("; ".join(escape(x) for x in item.evidence) or "sin condiciones positivas destacadas"),
+    ]
+
+
 async def build_opportunities_report(services, now: datetime | None = None) -> list[str]:
     now = _aware(now or datetime.now(UTC))
     universe = _source_universe()
@@ -116,42 +144,44 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
     for symbol, origin in universe:
         rows, error = await services.daily_history(symbol, outputsize=220)
         if not rows:
-            excluded.append((symbol, error or "histórico no disponible"))
+            excluded.append((symbol, error or "histórico no disponible", origin))
             continue
         item = evaluate_history(symbol, rows, now)
         if item is None:
-            excluded.append((symbol, "histórico insuficiente o desactualizado"))
+            excluded.append((symbol, "histórico insuficiente o desactualizado", origin))
             continue
         candidates.append(Opportunity(**{**item.__dict__, "origin": origin}))
-    candidates.sort(key=lambda item: item.symbol)
+
+    sections = (
+        ("💼 <b>1. CARTERA · POSICIONES ACTUALES</b>", "cartera"),
+        ("👀 <b>2. WATCHLIST · ACTIVOS OBSERVADOS</b>", "watchlist"),
+        ("🧭 <b>3. EXPLORACIÓN · UNIVERSO AMPLIADO</b>", "exploración"),
+    )
     lines = [
         "🔎 <b>OPORTUNIDADES · SWING</b> · 1–3 meses",
-        f"Universo: {len(universe)} activos · Evaluables: {len(candidates)} · {now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}",
-        "",
+        f"🌐 Universo: {len(universe)} activos · Evaluables: {len(candidates)} · {now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}",
+        "🟢 Sesgo comprador · 🔴 Sesgo vendedor · 🟡 Neutral",
     ]
-    if not candidates:
-        lines.extend(["No hay activos con histórico diario suficiente y reciente.",
-                      "Los activos sin datos válidos se excluyen; no se imputan precios."])
-    else:
-        lines.append("<b>Cribado técnico</b>")
-        for item in candidates[:MAX_RESULTS]:
-            lines.extend([
-                f"\n<b>{escape(item.symbol)}</b> · índice técnico {item.score:.0f}/100",
-                f"{escape(item.name)} · {escape(item.origin)}",
-                f"Cierre: {item.price:,.2f} {item.currency} · {item.observed_at:%Y-%m-%d}",
-                f"Momentum: 21 sesiones {item.momentum_21d:+.1%} · 63 sesiones {item.momentum_63d:+.1%}",
-                f"Volatilidad realizada anualizada (20 sesiones): {item.volatility_20d:.1%}",
-                f"Drawdown desde máximo de 126 sesiones: {item.drawdown_126d:.1%} · Tendencia: {item.trend}",
-                "Evidencia: " + ("; ".join(escape(x) for x in item.evidence) or "sin condiciones positivas destacadas"),
-            ])
+    for heading, source in sections:
+        members = [item for item in candidates if source in item.origin.split(" + ")]
+        members.sort(key=lambda item: (_signal(item)[1] == "neutral", -item.score, item.symbol))
+        lines.extend(["", heading, f"📊 {len(members)} activos evaluables"])
+        if not members:
+            lines.append("— Sin activos evaluables en esta sección.")
+        else:
+            for item in members[:MAX_RESULTS]:
+                lines.extend(_format_candidate(item))
+            if len(members) > MAX_RESULTS:
+                lines.append(f"… y {len(members) - MAX_RESULTS} activos más.")
     if excluded:
-        lines.extend(["", f"<b>Cobertura</b> · {len(excluded)} activos excluidos por datos no disponibles"])
-        lines.extend(f"• {escape(symbol)}: {escape(reason)}" for symbol, reason in excluded[:8])
+        lines.extend(["", f"⚠️ <b>COBERTURA</b> · {len(excluded)} activos excluidos"])
+        lines.extend(f"• <b>{escape(symbol)}</b> ({escape(origin)}): {escape(reason)}"
+                     for symbol, reason, origin in excluded[:8])
         if len(excluded) > 8:
             lines.append(f"• y {len(excluded) - 8} activos más")
     lines.extend([
         "",
-        "<i>El índice 0–100 resume condiciones técnicas observadas; no es una probabilidad, una rentabilidad esperada ni una recomendación. El universo de exploración es una lista explícita de ETF, no un screener exhaustivo. No se incorporan fundamentales, costes ni liquidez.</i>",
+        "<i>El sesgo es una clasificación técnica descriptiva, no una orden ni recomendación de compra o venta. El índice 0–100 no es una probabilidad ni una rentabilidad esperada. El universo de exploración es una lista explícita de ETF, no un screener exhaustivo. No se incorporan fundamentales, costes ni liquidez.</i>",
     ])
     chunks, current, size = [], [], 0
     for line in lines:
