@@ -83,7 +83,7 @@ def test_quote_falls_back_to_stooq_daily_close(monkeypatch):
     assert result.value == 100.25
     assert result.source == "stooq_daily"
     assert result.as_of.isoformat() == "2026-09-25T00:00:00+00:00"
-    assert calls[0][1] == {"s": "spy.us", "i": "d"}
+    assert calls[-1][1] == {"s": "spy.us", "i": "d"}
 
 
 def test_stooq_not_used_for_unknown_or_isin_symbol(monkeypatch):
