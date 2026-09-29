@@ -118,8 +118,19 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
 
     @dp.message(Command("opportunities"))
     async def opportunities(message: Message) -> None:
-        if await authorized(message):
-            await message.answer("La detección de oportunidades requiere definir universo y criterios. Esta versión no genera recomendaciones ni señales de compraventa.")
+        if not await authorized(message):
+            return
+        from app.opportunities import build_opportunities_report
+
+        await message.answer("🔎 <b>ESCANEANDO OPORTUNIDADES</b> · horizonte 1–3 meses\\nRecopilando cierres diarios y evaluando la cobertura…", parse_mode="HTML")
+        try:
+            report = await build_opportunities_report(services)
+        except Exception:
+            logger.exception("Opportunity scan failed")
+            await message.answer("No se ha podido completar el análisis. Revisa los logs del servicio.")
+            return
+        for part in report:
+            await message.answer(part, parse_mode="HTML")
 
     @dp.message(Command("risk"))
     async def risk(message: Message) -> None:

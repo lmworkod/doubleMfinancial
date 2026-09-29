@@ -209,6 +209,62 @@ class MarketData:
             pass
         return ProviderResult(None, "yahoo_chart", None, "no_valid_observation")
 
+    async def daily_history(self, symbol: str, outputsize: int = 100) -> tuple[list[tuple[datetime, float]], str | None]:
+        """Fetch daily closes for swing analysis; never substitutes a quote for history."""
+        key = symbol.strip().upper()
+        ticker = resolve_symbol(key, "twelve_data")
+        is_isin = key.startswith("IE") and len(key) == 12
+        errors: list[str] = []
+        if settings.twelve_data_api_key and ticker:
+            params = {"symbol": ticker, "interval": "1day", "outputsize": str(min(max(outputsize, 60), 500)),
+                      "apikey": settings.twelve_data_api_key}
+            exchange = resolve_exchange(key, "twelve_data")
+            if exchange:
+                params["exchange"] = exchange
+            payload, error = await self._get_json("https://api.twelvedata.com/time_series", params, "twelve_data")
+            if error:
+                errors.append(f"twelve_data:{error}")
+            else:
+                rows = []
+                for item in payload.get("values") or []:
+                    try:
+                        close = _positive_price(item.get("close"))
+                        observed = datetime.strptime(item["datetime"], "%Y-%m-%d").replace(tzinfo=UTC)
+                        if close is not None:
+                            rows.append((observed, close))
+                    except (ValueError, KeyError, TypeError):
+                        continue
+                if len(rows) >= 2:
+                    return sorted(rows), None
+                errors.append("twelve_data:insufficient_history")
+        yahoo_ticker = YAHOO_SYMBOLS.get(key)
+        if yahoo_ticker:
+            payload, error = await self._get_json(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_ticker}",
+                {"range": "2y", "interval": "1d", "events": "div,splits"}, "yahoo_chart",
+            )
+            if error:
+                errors.append(f"yahoo:{error}")
+            else:
+                try:
+                    result = payload["chart"]["result"][0]
+                    expected = INSTRUMENTS[key].quote_currency if key in INSTRUMENTS else "EUR"
+                    if str(result["meta"].get("currency", "")).upper() != expected:
+                        return [], "currency_mismatch"
+                    rows = []
+                    closes = result["indicators"]["quote"][0].get("close") or []
+                    for timestamp, raw in zip(result.get("timestamp") or [], closes):
+                        close = _positive_price(raw)
+                        if isinstance(timestamp, (int, float)) and timestamp > 0 and close is not None:
+                            rows.append((datetime.fromtimestamp(timestamp, UTC), close))
+                    if len(rows) >= 2:
+                        return rows, None
+                except (KeyError, IndexError, TypeError, ValueError):
+                    errors.append("yahoo:invalid_history")
+        if is_isin and not ticker and not yahoo_ticker:
+            return [], "unmapped_instrument"
+        return [], "; ".join(errors) or "history_unavailable"
+
     async def quote(self, symbol: str) -> ProviderResult:
         errors: list[str] = []
         twelve_symbol = resolve_symbol(symbol, "twelve_data")

@@ -193,6 +193,17 @@ The Stooq fallback is deliberately restricted to SPY, QQQ and IWM and returns da
 
 Yahoo Finance chart is used only as a best-effort daily fallback for explicitly mapped ETF listings and XAU/EUR. It is an undocumented endpoint, can be throttled or changed without notice, and its commercial/redistribution permissions are unclear; do not treat it as a licensed feed or as real-time data. The fallback validates the returned currency and uses the observation timestamp. For the iShares Physical Gold ETC, the preferred value remains the actual exchange-listed PPFB quote; XAU/EUR is a separate spot reference and is never substituted for the ETC price.
 
+## Swing opportunities
+
+The Telegram command /opportunities screens the holdings, watchlist and an explicit
+discovery universe of liquid broad-market and sector ETFs for a 1–3 month horizon.
+It computes 21/63-session momentum, 50/200-session moving-average context,
+20-session annualized realized volatility and 126-session drawdown from daily closes.
+The 0–100 technical index is descriptive only, not a probability or expected return.
+The discovery list is curated rather than an exhaustive market-wide screener.
+Instruments without sufficient recent history are excluded, not imputed. Yahoo
+history is best-effort and its coverage and usage conditions may change.
+
 ## Data and model limits
 
 Free APIs have changing quotas, market coverage and usage terms. Provider timestamps and market entitlements are authoritative; HTTP success alone does not prove data is real-time. The request budget is conservative but process-local. Refresh retries only transient network, timeout, throttling and server failures a bounded number of times. Authentication, permission and symbol errors are not retried. When a new value cannot be fetched, the last valid value is kept and reported as stale rather than being overwritten.
