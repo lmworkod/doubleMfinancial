@@ -31,7 +31,8 @@ def start_scheduler(services: Services, bot: Bot) -> AsyncIOScheduler:
         from app.monitor import scan_portfolio_signal_changes
 
         try:
-            await services.refresh_quotes()\n            alerts = await scan_portfolio_signal_changes(services)
+            await services.refresh_quotes()
+            alerts = await scan_portfolio_signal_changes(services)
             for alert in alerts:
                 for user_id in sorted(settings.allowed_user_ids):
                     await bot.send_message(user_id, alert, parse_mode="HTML")
