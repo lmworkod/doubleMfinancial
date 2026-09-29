@@ -149,7 +149,7 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
     for symbol, _origin in universe:
         try:
             rows, error = await services.daily_history(symbol, outputsize=220)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Could not fetch history for %s: %s", symbol, exc)
             excluded.append((symbol, str(exc)[:120]))
             continue
