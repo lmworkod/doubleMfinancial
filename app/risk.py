@@ -195,8 +195,10 @@ def calibrate_binary_walk_forward(
     y = data[target_column]
     if not y.isin([0, 1, False, True]).all():
         raise ValueError("target must contain only binary 0/1 labels")
-    split = max(minimum_train, int(len(data) * (1 - test_fraction)))
-    train, test = data.iloc[:split], data.iloc[split:]
+    # Purge the 20 observations before the holdout: forward 20-session labels
+    # must not share outcome windows across the train/test boundary.
+    split = max(minimum_train + 20, int(len(data) * (1 - test_fraction)))
+    train, test = data.iloc[:split - 20], data.iloc[split:]
     if len(train) < minimum_train or len(test) < minimum_test:
         return empty
     if train[target_column].nunique() < 2 or test[target_column].nunique() < 2:
