@@ -58,6 +58,8 @@ class Services:
                 logger.warning("Macro refresh failed for %s: %s", name, result.error or "unavailable")
                 continue
             db.set_metric(f"fred_{name}", str(result.value))
+            if result.as_of is not None:
+                db.record_metric_history(f"fred_{name}", result.value, result.as_of)
             db.set_metric(f"fred_{name}_as_of", result.as_of.isoformat() if result.as_of else "unknown")
             results[name] = f"ok:fred:{result.as_of.isoformat() if result.as_of else 'unknown'}"
         db.set_metric("last_macro_refresh", datetime.now(UTC).isoformat())
