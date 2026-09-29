@@ -11,8 +11,21 @@ logger = logging.getLogger(__name__)
 
 class Services:
     async def daily_history(self, symbol: str, outputsize: int = 220):
-        """Expose provider daily bars to analytics without fabricating history."""
-        return await market_data.daily_history(symbol, outputsize=outputsize)
+        """Read persisted closes first, then backfill/update from market providers."""
+        key = symbol.strip().upper()
+        limit = min(max(outputsize, 8), 500)
+        cached = db.daily_prices_for(key, limit=limit)
+        now = datetime.now(UTC)
+        fresh = bool(cached and (now.date() - cached[-1].session_date.date()).days <= 7)
+        if len(cached) >= limit and fresh:
+            return [(item.session_date, item.close) for item in cached], None
+        rows, error = await market_data.daily_history(key, outputsize=limit)
+        if rows:
+            db.upsert_daily_prices(key, rows, "yahoo_daily")
+        merged = db.daily_prices_for(key, limit=limit)
+        if merged:
+            return [(item.session_date, item.close) for item in merged], None if rows else error
+        return [], error
 
     async def refresh_quotes(self) -> dict[str, str]:
         results: dict[str, str] = {}
