@@ -32,12 +32,12 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
     @dp.message(CommandStart())
     async def start(message: Message) -> None:
         if await authorized(message):
-            await message.answer("DoubleM Financial listo. Usa /help para ver los comandos.")
+            await message.answer("📊 <b>DOUBLEM FINANCIAL</b>\n\n🟢 Bot operativo. Usa /help para consultar los comandos.", parse_mode="HTML")
 
     @dp.message(Command("help"))
     async def help_cmd(message: Message) -> None:
         if await authorized(message):
-            await message.answer("/portfolio · /add SYMBOL QUANTITY [COSTE] · /remove SYMBOL\n/analyze SYMBOL · /watchlist · /opportunities\n/risk · /macro · /refresh · /status")
+            await message.answer("<b>📊 CARTERA</b>\n/portfolio — Valoración y P/L\n/add SYMBOL CANTIDAD [COSTE] — Añadir posición\n/remove SYMBOL — Eliminar posición\n\n<b>🔎 ANÁLISIS</b>\n/analyze SYMBOL — Cotización\n/watchlist — Universo observado\n/opportunities — Oportunidades\n/risk — Calidad de datos\n/macro — Indicadores macro\n\n<b>⚙️ SISTEMA</b>\n/refresh — Actualizar datos\n/status — Estado del bot", parse_mode="HTML")
 
     @dp.message(Command("portfolio"))
     async def portfolio(message: Message) -> None:
@@ -47,7 +47,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if not lines:
             await message.answer("Cartera vacía. Ejemplo: /add SPY 2 500")
             return
-        parts = ["Cartera (valoración indicativa)"]
+        parts = ["💼 <b>CARTERA</b> · Valoración indicativa", ""]
         for line in lines:
             if line.price is None:
                 parts.append(f"{line.symbol}: {line.quantity:g} unidades · sin cotización")
@@ -147,7 +147,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         report = portfolio_risk_report(observations)
         labels = {"critical": "CRÍTICO · CALIDAD DE DATOS", "warning": "REVISAR · CALIDAD DE DATOS",
                   "info": "SIN INCIDENCIAS OBSERVABLES"}
-        parts = ["Diagnóstico de riesgo · cartera", ""]
+        parts = ["🛡️ <b>DIAGNÓSTICO DE RIESGO</b> · CARTERA", ""]
         for item in report:
             parts.append(f"• {item.symbol}: {labels[item.level]}")
             if item.price_age_hours is not None:
@@ -162,17 +162,17 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             ("Este informe evalúa la disponibilidad de datos y el P/L registrado, no predice pérdidas "
              "ni constituye una señal de compra o venta."),
         ])
-        await message.answer("\n".join(parts))
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("macro"))
     async def macro(message: Message) -> None:
         if not await authorized(message):
             return
-        parts = ["Variables macro almacenadas"]
+        parts = ["🌐 <b>INDICADORES MACRO</b>", ""]
         for key in ("fed_funds", "ust10y", "usd_broad"):
             metric, asof = db.get_metric(f"fred_{key}"), db.get_metric(f"fred_{key}_as_of")
             parts.append(f"{key}: {metric.value if metric else 'sin dato'} (fecha: {asof.value if asof else '—'})")
-        await message.answer("\n".join(parts))
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("refresh"))
     async def refresh(message: Message) -> None:
@@ -245,12 +245,12 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             heading = "Actualización completada con incidencias."
         else:
             heading = "No se han podido actualizar los datos."
-        parts = [heading, "", f"Mercado: {market_ok}/{len(market)} actualizados"]
+        parts = [f"<b>{heading}</b>", "", f"📈 <b>MERCADO</b> · {market_ok}/{len(market)} actualizados"]
         parts.extend(market_lines)
-        parts += ["", f"Macroeconomía: {macro_ok}/{len(macro)} actualizados"]
+        parts += ["", f"🌐 <b>MACROECONOMÍA</b> · {macro_ok}/{len(macro)} actualizados"]
         parts.extend(macro_lines)
         parts += ["", "La antigüedad se calcula desde la observación del proveedor, no desde la última consulta. Los cierres diarios pueden corresponder al último día hábil.", "Los datos anteriores se conservan cuando no hay una cotización nueva."]
-        await message.answer("\n".join(parts))
+        await message.answer("\n".join(parts), parse_mode="HTML")
 
     @dp.message(Command("status"))
     async def status(message: Message) -> None:
