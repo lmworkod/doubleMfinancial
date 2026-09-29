@@ -157,8 +157,16 @@ async def build_opportunities_report(services, now: datetime | None = None) -> l
         ("👀 <b>2. WATCHLIST · ACTIVOS OBSERVADOS</b>", "watchlist"),
         ("🧭 <b>3. EXPLORACIÓN · UNIVERSO AMPLIADO</b>", "exploración"),
     )
+    holdings = [item for item in candidates if "cartera" in item.origin.split(" + ")]
+    buys = [item for item in holdings if _signal(item)[1] == "buy"]
+    sells = [item for item in holdings if _signal(item)[1] == "sell"]
+    headline = (f"🧭 <b>HEADLINE: {len(buys)} posiciones con sesgo comprador · "
+                f"{len(sells)} con sesgo vendedor · "
+                f"{len(holdings) - len(buys) - len(sells)} neutrales</b>"
+                if holdings else "🧭 <b>HEADLINE: no hay posiciones evaluables</b>")
     lines = [
         "🔎 <b>OPORTUNIDADES · SWING</b> · 1–3 meses",
+        headline,
         f"🌐 Universo: {len(universe)} activos · Evaluables: {len(candidates)} · {now.astimezone().strftime('%d/%m/%Y %H:%M %Z')}",
         "🟢 Sesgo comprador · 🔴 Sesgo vendedor · 🟡 Neutral",
     ]
