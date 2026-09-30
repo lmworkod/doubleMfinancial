@@ -251,7 +251,7 @@ class MarketData:
         if error:
             return ProviderResult(None, "goldprice_dev", None, error)
         try:
-            rows = payload.get("prices") or payload.get("data") or []
+            rows = payload.get("symbols") or payload.get("prices") or payload.get("data") or []
             if isinstance(rows, dict):
                 rows = [rows]
             row = next((item for item in rows if str(item.get("symbol", "")).upper() in
