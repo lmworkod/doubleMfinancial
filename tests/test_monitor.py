@@ -1,6 +1,6 @@
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
-import asyncio
 
 from app import monitor
 
