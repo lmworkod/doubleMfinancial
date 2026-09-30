@@ -13,7 +13,6 @@ from html import escape
 import numpy as np
 
 from app import db
-from app.config import settings
 from app.instruments import INSTRUMENTS
 
 logger = logging.getLogger(__name__)
