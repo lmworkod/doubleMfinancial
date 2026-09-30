@@ -11,13 +11,16 @@ from app.instruments import instrument_name
 @dataclass
 class PortfolioLine:
     symbol: str
-    name: str
     quantity: float
     price: float | None
     currency: str
     market_value: float | None
     average_cost: float | None
     pnl: float | None
+
+    @property
+    def name(self) -> str:
+        return instrument_name(self.symbol)
 
 
 def portfolio_snapshot() -> tuple[list[PortfolioLine], float, float]:
@@ -35,7 +38,7 @@ def portfolio_snapshot() -> tuple[list[PortfolioLine], float, float]:
         if value is not None:
             total += value
             known += 1
-        lines.append(PortfolioLine(holding.symbol, instrument_name(holding.symbol), holding.quantity, price, currency, value,
+        lines.append(PortfolioLine(holding.symbol, holding.quantity, price, currency, value,
                                    holding.average_cost, pnl))
     return lines, total, known / len(lines) if lines else 0.0
 
