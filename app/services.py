@@ -2,7 +2,6 @@ import logging
 from datetime import UTC, datetime
 
 from app import db
-from app.config import settings
 from app.portfolio import holdings_fingerprint, portfolio_snapshot
 from app.providers import market_data
 
@@ -29,7 +28,7 @@ class Services:
 
     async def refresh_quotes(self) -> dict[str, str]:
         results: dict[str, str] = {}
-        symbols = sorted(set(settings.symbols + [holding.symbol for holding in db.get_holdings()]))
+        symbols = sorted(set(db.get_watchlist_symbols() + [holding.symbol for holding in db.get_holdings()]))
         for symbol in symbols:
             result = await market_data.quote(symbol)
             if result.value is not None:

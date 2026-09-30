@@ -38,7 +38,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
     @dp.message(Command("help"))
     async def help_cmd(message: Message) -> None:
         if await authorized(message):
-            await message.answer("<b>📊 CARTERA</b>\n/portfolio — Valoración y P/L\n/add SYMBOL CANTIDAD [COSTE] — Añadir posición\n/remove SYMBOL — Eliminar posición\n\n<b>🔎 ANÁLISIS</b>\n/analyze SYMBOL — Cotización\n/watchlist — Universo observado\n/opportunities — Oportunidades\n/risk — Calidad de datos\n/macro — Indicadores macro\n\n<b>⚙️ SISTEMA</b>\n/refresh — Actualizar datos\n/status — Estado del bot", parse_mode="HTML")
+            await message.answer("<b>📊 CARTERA</b>\n/portfolio — Valoración y P/L\n/add SYMBOL CANTIDAD [COSTE] — Añadir posición\n/remove SYMBOL — Eliminar posición\n\n<b>🔎 ANÁLISIS</b>\n/analyze SYMBOL — Cotización\n/watchlist [add|remove SYMBOL] — Universo observado\n/opportunities — Oportunidades\n/risk — Calidad de datos\n/macro — Indicadores macro\n\n<b>⚙️ SISTEMA</b>\n/refresh — Actualizar datos\n/status — Estado del bot", parse_mode="HTML")
 
     @dp.message(Command("portfolio"))
     async def portfolio(message: Message) -> None:
@@ -126,8 +126,33 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
 
     @dp.message(Command("watchlist"))
     async def watchlist(message: Message) -> None:
-        if await authorized(message):
-            await message.answer("Lista observada: " + ", ".join(settings.symbols))
+        if not await authorized(message):
+            return
+        args = (message.text or "").split()
+        if len(args) == 1:
+            symbols = db.get_watchlist_symbols()
+            await message.answer("👀 <b>WATCHLIST</b>\\n" + (", ".join(symbols) if symbols else "Vacía"),
+                                 parse_mode="HTML")
+            return
+        if len(args) != 3 or args[1].lower() not in {"add", "remove"}:
+            await message.answer("Uso: /watchlist [add|remove SYMBOL]")
+            return
+        symbol = args[2].upper()
+        valid_symbol = (len(symbol) <= 24 and symbol.isascii()
+                        and symbol.replace(".", "").replace("-", "").isalnum())
+        if not valid_symbol:
+            await message.answer("Ticker no válido. Usa letras, números, puntos o guiones.")
+            return
+        if args[1].lower() == "add":
+            added = db.add_watchlist_symbol(symbol)
+            await message.answer(
+                f"✅ {symbol} añadido a la watchlist." if added
+                else f"ℹ️ {symbol} ya estaba en la watchlist.")
+        else:
+            removed = db.remove_watchlist_symbol(symbol)
+            await message.answer(
+                f"🗑️ {symbol} eliminado de la watchlist." if removed
+                else f"ℹ️ {symbol} no estaba añadido; los símbolos configurados por defecto no se pueden eliminar.")
 
     @dp.message(Command("opportunities"))
     async def opportunities(message: Message) -> None:

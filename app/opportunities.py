@@ -13,7 +13,6 @@ from html import escape
 import numpy as np
 
 from app import db
-from app.config import settings
 from app.instruments import INSTRUMENTS
 
 logger = logging.getLogger(__name__)
@@ -110,7 +109,7 @@ def evaluate_history(symbol: str, rows: list[tuple[datetime, float]],
 
 def _source_universe() -> list[tuple[str, str]]:
     holdings = {item.symbol.upper() for item in db.get_holdings()}
-    watchlist = {symbol.upper() for symbol in settings.symbols}
+    watchlist = {symbol.upper() for symbol in db.get_watchlist_symbols()}
     discovery = set(DISCOVERY_UNIVERSE) | set(INSTRUMENTS)
     return [
         (symbol, " + ".join(origin for condition, origin in (
