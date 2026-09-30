@@ -9,8 +9,8 @@ from io import StringIO
 import httpx
 
 from app.config import settings
-from app.instruments import INSTRUMENTS, resolve_exchange, resolve_symbol
 from app.fx import usd_per_eur
+from app.instruments import INSTRUMENTS, resolve_exchange, resolve_symbol
 
 logger = logging.getLogger(__name__)
 
