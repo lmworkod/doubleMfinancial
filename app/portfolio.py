@@ -5,11 +5,13 @@ from dataclasses import dataclass
 from app.config import settings
 from app.db import get_holdings, quote_for
 from app.fx import quote_currency, to_eur, usd_per_eur
+from app.instruments import instrument_name
 
 
 @dataclass
 class PortfolioLine:
     symbol: str
+    name: str
     quantity: float
     price: float | None
     currency: str
@@ -33,7 +35,7 @@ def portfolio_snapshot() -> tuple[list[PortfolioLine], float, float]:
         if value is not None:
             total += value
             known += 1
-        lines.append(PortfolioLine(holding.symbol, holding.quantity, price, currency, value,
+        lines.append(PortfolioLine(holding.symbol, instrument_name(holding.symbol), holding.quantity, price, currency, value,
                                    holding.average_cost, pnl))
     return lines, total, known / len(lines) if lines else 0.0
 
