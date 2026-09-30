@@ -18,6 +18,11 @@ class Holding(Base):
     currency: Mapped[str] = mapped_column(String(8), default="USD")
 
 
+class WatchlistItem(Base):
+    __tablename__ = "watchlist"
+    symbol: Mapped[str] = mapped_column(String(24), primary_key=True)
+
+
 class Quote(Base):
     __tablename__ = "quotes"
     symbol: Mapped[str] = mapped_column(String(24), primary_key=True)
@@ -48,6 +53,23 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 async def init_db() -> None:
     Base.metadata.create_all(engine)
+
+
+def get_watchlist_symbols() -> list[str]:
+    """Return configured defaults plus user-added persistent watchlist symbols."""
+    with SessionLocal() as session:
+        stored = list(session.scalars(select(WatchlistItem.symbol).order_by(WatchlistItem.symbol)))
+    return sorted(set(settings.symbols) | {symbol.upper() for symbol in stored})
+
+
+def add_watchlist_symbol(symbol: str) -> bool:
+    """Add a symbol to the persistent watchlist; return False if already present."""
+    key = symbol.strip().upper()
+    with SessionLocal.begin() as session:
+        if session.get(WatchlistItem, key) is not None or key in settings.symbols:
+            return False
+        session.add(WatchlistItem(symbol=key))
+    return True
 
 
 def get_holdings() -> list[Holding]:
