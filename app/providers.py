@@ -263,7 +263,10 @@ class MarketData:
             observed = _parse_provider_datetime(row.get("computed_at") or row.get("timestamp"))
             if price is None or observed is None:
                 return ProviderResult(None, "goldprice_dev", None, "invalid_gold_quote")
-            rate = usd_per_eur()\n            if rate is None or rate <= 0:\n                return ProviderResult(None, "goldprice_dev", None, "eur_fx_unavailable")\n            return ProviderResult(price / rate, "goldprice_dev_spot_usd_converted", observed)
+            rate = usd_per_eur()
+            if rate is None or rate <= 0:
+                return ProviderResult(None, "goldprice_dev", None, "eur_fx_unavailable")
+            return ProviderResult(price / rate, "goldprice_dev_spot_usd_converted", observed)
         except (AttributeError, TypeError):
             return ProviderResult(None, "goldprice_dev", None, "invalid_gold_response")
 
