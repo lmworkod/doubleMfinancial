@@ -75,3 +75,14 @@ def resolve_exchange(symbol: str, provider: str) -> str | None:
         return None
     item = INSTRUMENTS.get(symbol.strip().upper())
     return item.twelve_data_exchange if item else None
+
+
+def instrument_name(symbol: str) -> str:
+    """Return a canonical display name, falling back to the supplied ticker."""
+    key = symbol.strip().upper()
+    item = INSTRUMENTS.get(key)
+    if item:
+        return item.name
+    if key == "XAU-EUR":
+        return "Oro al contado (EUR/oz)"
+    return key
