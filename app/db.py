@@ -72,6 +72,19 @@ def add_watchlist_symbol(symbol: str) -> bool:
     return True
 
 
+def remove_watchlist_symbol(symbol: str) -> bool:
+    """Remove a user-added symbol; configured defaults remain immutable."""
+    key = symbol.strip().upper()
+    if key in settings.symbols:
+        return False
+    with SessionLocal.begin() as session:
+        item = session.get(WatchlistItem, key)
+        if item is None:
+            return False
+        session.delete(item)
+    return True
+
+
 def get_holdings() -> list[Holding]:
     with SessionLocal() as session:
         return list(session.scalars(select(Holding).order_by(Holding.symbol)))
