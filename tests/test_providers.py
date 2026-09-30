@@ -288,10 +288,12 @@ def test_daily_history_prefers_yahoo_and_returns_eight_sessions(monkeypatch):
 
 
 def test_gold_eur_provider_parses_spot_response(monkeypatch):
+    from app import providers
+    monkeypatch.setattr(providers, "usd_per_eur", lambda: 1.25)
     service = MarketData()
     async def get(url, params):
         return httpx.Response(200, json={"symbols": [{
-            "symbol": "XAU-EUR-SPOT", "price": "3500.25",
+            "symbol": "XAU-USD-SPOT", "price": "3500.25",
             "computed_at": "2026-09-30T12:00:00Z",
         }]}, request=httpx.Request("GET", url))
     service.client.get = get
@@ -301,8 +303,8 @@ def test_gold_eur_provider_parses_spot_response(monkeypatch):
         finally:
             await service.close()
     result = asyncio.run(run())
-    assert result.value == 3500.25
-    assert result.source == "goldprice_dev_spot"
+    assert result.value == 2800.2
+    assert result.source == "goldprice_dev_spot_usd_converted"
     assert result.as_of.isoformat() == "2026-09-30T12:00:00+00:00"
 
 
