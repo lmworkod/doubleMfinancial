@@ -2,7 +2,6 @@ import logging
 from datetime import UTC, datetime
 
 from app import db
-from app.config import settings
 from app.portfolio import holdings_fingerprint, portfolio_snapshot
 from app.providers import market_data
 
