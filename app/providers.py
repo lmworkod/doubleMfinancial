@@ -10,6 +10,7 @@ import httpx
 
 from app.config import settings
 from app.instruments import INSTRUMENTS, resolve_exchange, resolve_symbol
+from app.fx import usd_per_eur
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +247,7 @@ class MarketData:
     async def gold_eur_quote(self) -> ProviderResult:
         """Fetch XAU spot in EUR from goldprice.dev (indicative, not Revolut execution)."""
         payload, error = await self._get_json(
-            "https://api.goldprice.dev/v1/prices", {"symbol": "XAU-EUR-SPOT"}, "goldprice_dev"
+            "https://api.goldprice.dev/v1/prices", {"symbol": "XAU-USD-SPOT"}, "goldprice_dev"
         )
         if error:
             return ProviderResult(None, "goldprice_dev", None, error)
@@ -255,14 +256,14 @@ class MarketData:
             if isinstance(rows, dict):
                 rows = [rows]
             row = next((item for item in rows if str(item.get("symbol", "")).upper() in
-                        {"XAU-EUR-SPOT", "XAU/EUR", "XAU-EUR"}), None)
+                        {"XAU-USD-SPOT", "XAU/USD", "XAU-USD"}), None)
             if row is None:
                 return ProviderResult(None, "goldprice_dev", None, "gold_quote_missing")
             price = _positive_price(row.get("price"))
             observed = _parse_provider_datetime(row.get("computed_at") or row.get("timestamp"))
             if price is None or observed is None:
                 return ProviderResult(None, "goldprice_dev", None, "invalid_gold_quote")
-            return ProviderResult(price, "goldprice_dev_spot", observed)
+            rate = usd_per_eur()\n            if rate is None or rate <= 0:\n                return ProviderResult(None, "goldprice_dev", None, "eur_fx_unavailable")\n            return ProviderResult(price / rate, "goldprice_dev_spot_usd_converted", observed)
         except (AttributeError, TypeError):
             return ProviderResult(None, "goldprice_dev", None, "invalid_gold_response")
 
