@@ -110,7 +110,7 @@ def evaluate_history(symbol: str, rows: list[tuple[datetime, float]],
 
 def _source_universe() -> list[tuple[str, str]]:
     holdings = {item.symbol.upper() for item in db.get_holdings()}
-    watchlist = {symbol.upper() for symbol in settings.symbols}
+    watchlist = {symbol.upper() for symbol in db.get_watchlist_symbols()}
     discovery = set(DISCOVERY_UNIVERSE) | set(INSTRUMENTS)
     return [
         (symbol, " + ".join(origin for condition, origin in (
