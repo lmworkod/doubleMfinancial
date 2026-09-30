@@ -179,7 +179,7 @@ pytest -q
 
 ## Telegram commands
 
-`/start`, `/help`, `/portfolio`, `/add SYMBOL QUANTITY [AVERAGE_COST]`, `/remove SYMBOL`, `/analyze SYMBOL`, `/watchlist`, `/opportunities`, `/risk`, `/macro`, `/refresh`, `/status`.
+`/start`, `/help`, `/portfolio`, `/add SYMBOL QUANTITY [AVERAGE_COST]`, `/remove SYMBOL`, `/analyze SYMBOL`, `/watchlist [add|remove SYMBOL]`, `/opportunities`, `/risk`, `/macro`, `/refresh`, `/status`.
 
 Positions are entered manually; there is no broker connection. Valuation includes only positions with a stored quote that can be converted to EUR; cash and fees are excluded. USD positions use the latest stored ECB/Frankfurter USD-per-EUR reference rate.
 
