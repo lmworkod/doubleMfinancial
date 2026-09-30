@@ -22,7 +22,7 @@ def test_intraday_drop_alert_and_deduplication(monkeypatch):
             return ([(observed, 100.0)] * 64, None)
     alerts = asyncio.run(monitor.scan_intraday_drops(Services()))
     assert len(alerts) == 1
-    assert "NVIDIA Corporation (NVDA)" in alerts[0]
+    assert "<b>NVDA (NVDA)</b>" in alerts[0]
     assert "-6.00%" in alerts[0]
     assert "2 unidades" in alerts[0]
     assert values["intraday_drop_alert_NVDA"].value == observed.date().isoformat()
