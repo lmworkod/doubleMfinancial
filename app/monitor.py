@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from html import escape
 
 from app import db
-from app.instruments import INSTRUMENTS
+from app.instruments import INSTRUMENTS, instrument_name
 from app.providers import market_data
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ INTRADAY_DROP_THRESHOLD = 0.05
 
 def _name(symbol: str) -> str:
     item = INSTRUMENTS.get(symbol.upper())
-    return item.name if item else symbol.upper()
+    return instrument_name(symbol)
 
 
 def _alert(symbol: str, price: float, open_price: float, observed_at: datetime,
