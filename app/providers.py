@@ -209,6 +209,63 @@ class MarketData:
             pass
         return ProviderResult(None, "yahoo_chart", None, "no_valid_observation")
 
+    async def intraday_quote(self, symbol: str) -> dict | None:
+        """Return a fresh Yahoo 5-minute intraday quote and session open.
+
+        Daily-only fallbacks are deliberately excluded: they cannot establish
+        an intraday drawdown. Yahoo is best-effort, not a licensed feed.
+        """
+        key = symbol.strip().upper()
+        ticker = YAHOO_SYMBOLS.get(key) or (None if key.startswith("IE") and len(key) == 12 else key)
+        if not ticker:
+            return None
+        payload, error = await self._get_json(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
+            {"range": "1d", "interval": "5m"}, "yahoo_intraday",
+        )
+        if error:
+            return None
+        try:
+            result = payload["chart"]["result"][0]
+            meta = result["meta"]
+            expected = INSTRUMENTS[key].quote_currency if key in INSTRUMENTS else None
+            if expected and str(meta.get("currency", "")).upper() != expected:
+                return None
+            quote = result["indicators"]["quote"][0]
+            prices = [p for p in quote.get("close", []) if _positive_price(p) is not None]
+            timestamps = result.get("timestamp") or []
+            if not prices or not timestamps:
+                return None
+            stamp = max(t for t in timestamps if isinstance(t, (int, float)) and t > 0)
+            return {"price": _positive_price(meta.get("regularMarketPrice")) or prices[-1],
+                    "open": _positive_price(meta.get("regularMarketOpen")) or _positive_price(quote.get("open", [None])[0]),
+                    "as_of": datetime.fromtimestamp(stamp, UTC), "source": "yahoo_intraday_5m"}
+        except (KeyError, IndexError, TypeError, ValueError, OverflowError):
+            return None
+
+    async def gold_eur_quote(self) -> ProviderResult:
+        """Fetch XAU spot in EUR from goldprice.dev (indicative, not Revolut execution)."""
+        payload, error = await self._get_json(
+            "https://api.goldprice.dev/v1/prices", {"symbol": "XAU-EUR-SPOT"}, "goldprice_dev"
+        )
+        if error:
+            return ProviderResult(None, "goldprice_dev", None, error)
+        try:
+            rows = payload.get("prices") or payload.get("data") or []
+            if isinstance(rows, dict):
+                rows = [rows]
+            row = next((item for item in rows if str(item.get("symbol", "")).upper() in
+                        {"XAU-EUR-SPOT", "XAU/EUR", "XAU-EUR"}), None)
+            if row is None:
+                return ProviderResult(None, "goldprice_dev", None, "gold_quote_missing")
+            price = _positive_price(row.get("price"))
+            observed = _parse_provider_datetime(row.get("computed_at") or row.get("timestamp"))
+            if price is None or observed is None:
+                return ProviderResult(None, "goldprice_dev", None, "invalid_gold_quote")
+            return ProviderResult(price, "goldprice_dev_spot", observed)
+        except (AttributeError, TypeError):
+            return ProviderResult(None, "goldprice_dev", None, "invalid_gold_response")
+
     async def daily_history(self, symbol: str, outputsize: int = 100) -> tuple[list[tuple[datetime, float]], str | None]:
         """Fetch daily closes from Yahoo first, with Twelve Data and Stooq as fallbacks."""
         key = symbol.strip().upper()
