@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from app.config import settings
 from app.db import get_holdings, quote_for
 from app.fx import quote_currency, to_eur, usd_per_eur
+from app.instruments import instrument_name
 
 
 @dataclass
@@ -16,6 +17,10 @@ class PortfolioLine:
     market_value: float | None
     average_cost: float | None
     pnl: float | None
+
+    @property
+    def name(self) -> str:
+        return instrument_name(self.symbol)
 
 
 def portfolio_snapshot() -> tuple[list[PortfolioLine], float, float]:

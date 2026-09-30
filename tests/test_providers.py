@@ -285,3 +285,48 @@ def test_daily_history_prefers_yahoo_and_returns_eight_sessions(monkeypatch):
     assert rows[-1][1] == 111
     assert len(calls) == 1
     assert "query1.finance.yahoo.com" in calls[0]
+
+
+def test_gold_eur_provider_parses_spot_response(monkeypatch):
+    from app import providers
+    monkeypatch.setattr(providers, "usd_per_eur", lambda: 1.25)
+    service = MarketData()
+    async def get(url, params):
+        return httpx.Response(200, json={"symbols": [{
+            "symbol": "XAU-USD-SPOT", "price": "3500.25",
+            "computed_at": "2026-09-30T12:00:00Z",
+        }]}, request=httpx.Request("GET", url))
+    service.client.get = get
+    async def run():
+        try:
+            return await service.gold_eur_quote()
+        finally:
+            await service.close()
+    result = asyncio.run(run())
+    assert result.value == 2800.2
+    assert result.source == "goldprice_dev_spot_usd_converted"
+    assert result.as_of.isoformat() == "2026-09-30T12:00:00+00:00"
+
+
+def test_intraday_quote_uses_five_minute_yahoo_data(monkeypatch):
+    service = MarketData()
+    calls = []
+    async def get(url, params):
+        calls.append((url, params))
+        return httpx.Response(200, json={"chart": {"result": [{
+            "meta": {"currency": "USD", "regularMarketPrice": 94.0,
+                     "regularMarketOpen": 100.0},
+            "timestamp": [1790770000],
+            "indicators": {"quote": [{"close": [94.0], "open": [100.0]}]},
+        }]}}, request=httpx.Request("GET", url))
+    service.client.get = get
+    async def run():
+        try:
+            return await service.intraday_quote("SPY")
+        finally:
+            await service.close()
+    result = asyncio.run(run())
+    assert result["price"] == 94.0
+    assert result["open"] == 100.0
+    assert result["source"] == "yahoo_intraday_5m"
+    assert calls[0][1]["interval"] == "5m"

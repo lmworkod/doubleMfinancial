@@ -35,7 +35,7 @@ def test_digest_shows_cost_pnl_arrow_and_missing_period_history(monkeypatch):
     monkeypatch.setattr(digest.db, "record_portfolio_snapshot", lambda *args, **kwargs: None)
     result = build_daily_digest(datetime(2026, 9, 28, 21, 0, tzinfo=UTC))
     assert "Valor conocido: 900.00 EUR" in result
-    assert "🟢⬆️ SPY: 2 × 500.0000 USD" in result
+    assert "🟢⬆️ SPY (SPY): 2 × 500.0000 USD" in result
     assert "P/L desde coste: +90.00 EUR" in result
     assert "P/L del día: no disponible" in result
     assert "P/L acumulado de la semana: no disponible" in result
@@ -55,8 +55,8 @@ def test_digest_marks_flat_and_loss_positions(monkeypatch):
     monkeypatch.setattr(digest.db, "portfolio_snapshot_before", lambda cutoff, fingerprint: None)
     monkeypatch.setattr(digest.db, "record_portfolio_snapshot", lambda *args, **kwargs: None)
     result = build_daily_digest(datetime(2026, 9, 28, 21, 0, tzinfo=UTC))
-    assert "⚪ FLAT:" in result
-    assert "🔴⬇️ LOSS:" in result
+    assert "⚪ FLAT (FLAT):" in result
+    assert "🔴⬇️ LOSS (LOSS):" in result
 
 
 def test_macro_digest_formats_age_and_trends(monkeypatch):

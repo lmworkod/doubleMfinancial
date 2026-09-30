@@ -102,7 +102,7 @@ def build_daily_digest(now: datetime | None = None) -> str:
         ])
         for item in items:
             if item.price is None:
-                lines.append(f"⚪ {escape(item.symbol)}: {item.quantity:g} uds. · sin cotización")
+                lines.append(f"⚪ {escape(item.name)} ({escape(item.symbol)}): {item.quantity:g} uds. · sin cotización")
                 continue
             value = f"{item.market_value:,.2f} EUR" if item.market_value is not None else "valor EUR no disponible"
             if item.pnl is None or abs(item.pnl) < 0.005:
@@ -112,7 +112,7 @@ def build_daily_digest(now: datetime | None = None) -> str:
             else:
                 arrow = "🔴⬇️"
             pnl = f" · P/L desde coste: {item.pnl:+,.2f} EUR" if item.pnl is not None else ""
-            lines.append(f"{arrow} {escape(item.symbol)}: {item.quantity:g} × {item.price:,.4f} {escape(item.currency)} · {value}{pnl}")
+            lines.append(f"{arrow} {escape(item.name)} ({escape(item.symbol)}): {item.quantity:g} × {item.price:,.4f} {escape(item.currency)} · {value}{pnl}")
     if items and coverage == 1.0:
         db.record_portfolio_snapshot(total, coverage, holdings_fingerprint(items), now_utc)
     lines.extend(["", "🌐 <b>MACRO Y DIVISA</b>"])

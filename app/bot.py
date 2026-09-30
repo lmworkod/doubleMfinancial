@@ -9,6 +9,7 @@ from aiogram.types import Message
 from app import db
 from app.config import settings
 from app.fx import quote_currency
+from app.instruments import instrument_name
 from app.portfolio import portfolio_snapshot
 from app.services import Services
 
@@ -52,7 +53,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         parts = ["💼 <b>CARTERA · PANEL DE SEGUIMIENTO</b>", ""]
         for line in lines:
             if line.price is None:
-                parts.append(f"<b>{escape(line.symbol)}</b>: {line.quantity:g} unidades · cotización no disponible")
+                parts.append(f"<b>{escape(line.name)} ({escape(line.symbol)})</b>: {line.quantity:g} unidades · cotización no disponible")
                 continue
             value = (f"{line.market_value:,.2f} EUR" if line.market_value is not None
                      else "valor EUR no disponible")
@@ -63,7 +64,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                 pnl_pct = (line.price / line.average_cost - 1
                            if line.average_cost is not None and line.average_cost > 0 else None)
                 pnl = f" · P/L {line.pnl:+,.2f} EUR" + (f" ({pnl_pct:+.2%})" if pnl_pct is not None else "")
-            parts.append(f"<b>{escape(line.symbol)}</b> · {line.quantity:g} × {line.price:,.4f} {escape(line.currency)}\n"
+            parts.append(f"<b>{escape(line.name)} ({escape(line.symbol)})</b> · {line.quantity:g} × {line.price:,.4f} {escape(line.currency)}\n"
                          f"  Valor: {value}{weight}{pnl}")
         largest = max((line.market_value / total for line in valued), default=0.0) if total > 0 else None
         parts.extend(["", f"💰 <b>Valor conocido:</b> {total:,.2f} EUR",
@@ -93,7 +94,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
             await message.answer("Símbolo, cantidad o coste no válidos.")
             return
         db.set_holding(symbol, quantity, cost)
-        await message.answer(f"Posición registrada: {symbol}, {quantity:g} unidades.")
+        await message.answer(f"Posición registrada: {instrument_name(symbol)} ({symbol}), {quantity:g} unidades.")
 
     @dp.message(Command("remove"))
     async def remove(message: Message) -> None:
@@ -122,7 +123,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if quote is None:
             await message.answer("No se pudo obtener el precio. Comprueba proveedores y cuotas.")
         else:
-            await message.answer(f"{symbol}: {quote.price:,.4f} {quote_currency(symbol, settings.default_currency)}\nFuente: {quote.source}\nObservado: {quote.observed_at.isoformat()}")
+            await message.answer(f"{instrument_name(symbol)} ({symbol}): {quote.price:,.4f} {quote_currency(symbol, settings.default_currency)}\nFuente: {quote.source}\nObservado: {quote.observed_at.isoformat()}")
 
     @dp.message(Command("watchlist"))
     async def watchlist(message: Message) -> None:
@@ -131,7 +132,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         args = (message.text or "").split()
         if len(args) == 1:
             symbols = db.get_watchlist_symbols()
-            await message.answer("👀 <b>WATCHLIST</b>\\n" + (", ".join(symbols) if symbols else "Vacía"),
+            await message.answer("👀 <b>WATCHLIST</b>\\n" + (", ".join(f"{instrument_name(s)} ({s})" for s in symbols) if symbols else "Vacía"),
                                  parse_mode="HTML")
             return
         if len(args) != 3 or args[1].lower() not in {"add", "remove"}:
@@ -146,13 +147,13 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if args[1].lower() == "add":
             added = db.add_watchlist_symbol(symbol)
             await message.answer(
-                f"✅ {symbol} añadido a la watchlist." if added
-                else f"ℹ️ {symbol} ya estaba en la watchlist.")
+                f"✅ {instrument_name(symbol)} ({symbol}) añadido a la watchlist." if added
+                else f"ℹ️ {instrument_name(symbol)} ({symbol}) ya estaba en la watchlist.")
         else:
             removed = db.remove_watchlist_symbol(symbol)
             await message.answer(
-                f"🗑️ {symbol} eliminado de la watchlist." if removed
-                else f"ℹ️ {symbol} no estaba añadido; los símbolos configurados por defecto no se pueden eliminar.")
+                f"🗑️ {instrument_name(symbol)} ({symbol}) eliminado de la watchlist." if removed
+                else f"ℹ️ {instrument_name(symbol)} ({symbol}) no estaba añadido; los símbolos configurados por defecto no se pueden eliminar.")
 
     @dp.message(Command("opportunities"))
     async def opportunities(message: Message) -> None:
@@ -207,7 +208,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                   "info": "SIN INCIDENCIAS OBSERVABLES"}
         parts = ["🛡️ <b>DIAGNÓSTICO DE RIESGO</b> · CARTERA", ""]
         for item in report:
-            parts.append(f"• <b>{escape(item.symbol)}</b>: {labels[item.level]}")
+            parts.append(f"• <b>{escape(instrument_name(item.symbol))} ({escape(item.symbol)})</b>: {labels[item.level]}")
             if item.price_age_hours is not None:
                 parts.append(f"  Antigüedad de cotización: {item.price_age_hours:.1f} h")
             if item.pnl_pct is not None:
