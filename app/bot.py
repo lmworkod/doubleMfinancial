@@ -147,13 +147,13 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
         if args[1].lower() == "add":
             added = db.add_watchlist_symbol(symbol)
             await message.answer(
-                f"✅ {symbol} añadido a la watchlist." if added
-                else f"ℹ️ {symbol} ya estaba en la watchlist.")
+                f"✅ {instrument_name(symbol)} ({symbol}) añadido a la watchlist." if added
+                else f"ℹ️ {instrument_name(symbol)} ({symbol}) ya estaba en la watchlist.")
         else:
             removed = db.remove_watchlist_symbol(symbol)
             await message.answer(
-                f"🗑️ {symbol} eliminado de la watchlist." if removed
-                else f"ℹ️ {symbol} no estaba añadido; los símbolos configurados por defecto no se pueden eliminar.")
+                f"🗑️ {instrument_name(symbol)} ({symbol}) eliminado de la watchlist." if removed
+                else f"ℹ️ {instrument_name(symbol)} ({symbol}) no estaba añadido; los símbolos configurados por defecto no se pueden eliminar.")
 
     @dp.message(Command("opportunities"))
     async def opportunities(message: Message) -> None:
@@ -208,7 +208,7 @@ def build_bot(services: Services) -> tuple[Bot, Dispatcher]:
                   "info": "SIN INCIDENCIAS OBSERVABLES"}
         parts = ["🛡️ <b>DIAGNÓSTICO DE RIESGO</b> · CARTERA", ""]
         for item in report:
-            parts.append(f"• <b>{escape(item.symbol)}</b>: {labels[item.level]}")
+            parts.append(f"• <b>{escape(instrument_name(item.symbol))} ({escape(item.symbol)})</b>: {labels[item.level]}")
             if item.price_age_hours is not None:
                 parts.append(f"  Antigüedad de cotización: {item.price_age_hours:.1f} h")
             if item.pnl_pct is not None:
